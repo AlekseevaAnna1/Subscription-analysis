@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../widgets/subscription_item.dart';
+import '../models/subscription.dart';
 
 
 // Модальное окно для добавления новой подписки
 class AddSubscriptionModal extends StatefulWidget {
   @override
-  State<AddSubscriptionModal> createState() => _AddSubscriptionModalState();
+  _AddSubscriptionModalState createState() => _AddSubscriptionModalState();
 }
 
-class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // приватный state класс
+class _AddSubscriptionModalState extends State<AddSubscriptionModal> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
@@ -16,19 +19,21 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // при
   
   bool _isTrial = false;
   DateTime? _selectedDate;
+  BillingCycle _billingCycle = BillingCycle.monthly;
+  int _billingDay = DateTime.now().day;
 
   // Функция для выбора даты
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
-      firstDate: DateTime(2000),
+      firstDate: DateTime.now(),
       lastDate: DateTime(2100),
     );
-    if (picked != null && picked != _selectedDate) {
+    if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _dateController.text = "${picked.day}.${picked.month}.${picked.year}";
+        _dateController.text = DateFormat('dd.MM.yyyy').format(picked);
       });
     }
   }
@@ -36,23 +41,37 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // при
   // Функция для добавления подписки
   void _addSubscription() {
     if (_formKey.currentState!.validate()) {
-      // Здесь будет логика сохранения подписки
-      print('Добавлена подписка:');
-      print('Название: ${_nameController.text}');
-      print('Стоимость: ${_amountController.text}');
-      print('Дата: ${_dateController.text}');
-      print('Пробная: $_isTrial');
-      print('Оповещение за: ${_daysController.text} дней');
-      
-      // Закрываем модальное окно
-      Navigator.of(context).pop();
+      // Создаем новую подписку с уникальным ID
+      final newSubscription = Subscription(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: _nameController.text,
+        nextPaymentDate: _selectedDate ?? DateTime.now(),
+        currentAmount: int.tryParse(_amountController.text),
+        icon: Icons.receipt, // Базовая иконка
+        color: Colors.blue, // Базовый цвет
+        category: 'Другое', // Базовая категория
+        connectedDate: DateTime.now(),
+        priceHistory: [
+          PriceHistory(
+            startDate: DateTime.now(),
+            amount: int.tryParse(_amountController.text) ?? 0,
+          ),
+        ],
+        isTrial: _isTrial,
+        notifyDays: int.tryParse(_daysController.text) ?? 3,
+        billingCycle: _billingCycle,
+        billingDay: _billingDay,
+      );
+
+      // Закрываем модальное окно и возвращаем новую подписку
+      Navigator.of(context).pop(newSubscription);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.8,
+      height: MediaQuery.of(context).size.height * 0.7,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.only(
@@ -61,19 +80,13 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // при
         ),
       ),
       child: Padding(
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
+        padding: EdgeInsets.all(24),
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Заголовок
                 Center(
                   child: Text(
                     'Добавить подписку',
@@ -85,19 +98,10 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // при
                 ),
                 SizedBox(height: 24),
                 
-                // Поле "Название"
-                Text(
-                  'Название',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                SizedBox(height: 8),
                 TextFormField(
                   controller: _nameController,
                   decoration: InputDecoration(
-                    hintText: 'Введите название подписки',
+                    labelText: 'Название подписки',
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) {
@@ -109,20 +113,11 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // при
                 ),
                 SizedBox(height: 16),
                 
-                // Поле "Стоимость"
-                Text(
-                  'Стоимость',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                SizedBox(height: 8),
                 TextFormField(
                   controller: _amountController,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
-                    hintText: 'Введите стоимость',
+                    labelText: 'Стоимость',
                     border: OutlineInputBorder(),
                     suffixText: 'руб.',
                   ),
@@ -138,21 +133,12 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // при
                 ),
                 SizedBox(height: 16),
                 
-                // Поле "Дата оплаты"
-                Text(
-                  'Дата оплаты',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                SizedBox(height: 8),
                 TextFormField(
                   controller: _dateController,
                   readOnly: true,
                   onTap: _selectDate,
                   decoration: InputDecoration(
-                    hintText: 'Выберите дату',
+                    labelText: 'Дата следующего списания',
                     border: OutlineInputBorder(),
                     suffixIcon: Icon(Icons.calendar_today),
                   ),
@@ -165,7 +151,54 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // при
                 ),
                 SizedBox(height: 16),
                 
-                // Чекбокс "Пробная подписка"
+                // Периодичность
+                DropdownButtonFormField<BillingCycle>(
+                  value: _billingCycle,
+                  decoration: InputDecoration(
+                    labelText: 'Периодичность',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: BillingCycle.monthly,
+                      child: Text('Ежемесячно'),
+                    ),
+                    DropdownMenuItem(
+                      value: BillingCycle.quarterly,
+                      child: Text('Ежеквартально'),
+                    ),
+                    DropdownMenuItem(
+                      value: BillingCycle.yearly,
+                      child: Text('Ежегодно'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _billingCycle = value ?? BillingCycle.monthly;
+                    });
+                  },
+                ),
+                SizedBox(height: 16),
+                
+                // День списания
+                TextFormField(
+                  controller: TextEditingController(text: _billingDay.toString()),
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'День списания (1-31)',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) {
+                    final day = int.tryParse(value);
+                    if (day != null && day >= 1 && day <= 31) {
+                      setState(() {
+                        _billingDay = day;
+                      });
+                    }
+                  },
+                ),
+                SizedBox(height: 16),
+                
                 Row(
                   children: [
                     Checkbox(
@@ -181,20 +214,11 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // при
                 ),
                 SizedBox(height: 16),
                 
-                // Поле "Оповестить за ___ дней"
-                Text(
-                  'Оповестить за',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                SizedBox(height: 8),
                 TextFormField(
                   controller: _daysController,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
-                    hintText: 'Количество дней',
+                    labelText: 'Оповестить за (дней)',
                     border: OutlineInputBorder(),
                     suffixText: 'дней',
                   ),
@@ -210,7 +234,6 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // при
                 ),
                 SizedBox(height: 32),
                 
-                // Кнопка "Добавить подписку"
                 SizedBox(
                   width: double.infinity,
                   height: 50,
@@ -236,7 +259,7 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // при
               ],
             ),
           ),
-        ), 
+        ),
       ),
     );
   }
@@ -250,4 +273,3 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> { // при
     super.dispose();
   }
 }
-

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../widgets/add_subscription_modal.dart';
 import '../widgets/subscription_item.dart';
 import '../models/subscription.dart';
@@ -8,7 +9,7 @@ import 'analytics_screen.dart';
 import 'notifications_screen.dart';
 
 class SubscriptionsScreen extends StatefulWidget {
-  const SubscriptionsScreen({Key? key}) : super(key: key);
+  SubscriptionsScreen({Key? key}) : super(key: key);
 
   @override
   State<SubscriptionsScreen> createState() => _SubscriptionsScreenState(); // создает объект State для управления StatefulWidget
@@ -17,92 +18,79 @@ class SubscriptionsScreen extends StatefulWidget {
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   
-  final List<Subscription> subscriptions = [
-    Subscription(
-      name: 'КиноПоиск',
-      date: '20.09.2025',
-      amount: 256,
-      icon: Icons.movie_creation_outlined,
-      color: Colors.orange,
-      category: 'Видео',
-    ),
-    Subscription(
-      name: 'Spotify',
-      date: '23.09.2025',
-      amount: 315,
-      icon: Icons.music_note_outlined,
-      color: Colors.green,
-      category: 'Музыка',
-    ),
-    Subscription(
-      name: 'Яндекс Музыка',
-      date: '20.09.2025',
-      amount: 256,
-      icon: Icons.headphones_outlined,
-      color: Colors.red,
-      category: 'Музыка',
-    ),
-    Subscription(
-      name: 'Кинотеатр Okko',
-      date: '20.09.2025',
-      amount: 256,
-      icon: Icons.play_circle_outline,
-      color: Colors.purple,
-      category: 'Видео',
-    ),
-    Subscription(
-      name: 'Литрес',
-      date: '20.09.2025',
-      amount: 256,
-      icon: Icons.menu_book_outlined,
-      color: Colors.blue,
-      category: 'Книги',
-    ),
-    Subscription(
-      name: 'Яндекс Книги',
-      date: '20.09.2025',
-      amount: 256,
-      icon: Icons.book_outlined,
-      color: Colors.blue[800]!,
-      category: 'Книги',
-    ),
-    Subscription(
-      name: 'СберПрайм',
-      date: '20.09.2025',
-      amount: 256,
-      icon: Icons.diamond_outlined,
-      color: Colors.green[700]!,
-      category: 'Другое',
-    ),
-    Subscription(
-      name: 'VK',
-      date: '20.09.2025',
-      amount: 199,
-      icon: Icons.chat_outlined,
-      color: Colors.blue[400]!,
-      category: 'Соцсети',
-    ),
-  ];
-
+  List<Subscription> subscriptions = [];// Сначала список подписок пустой
   final List<String> categories = ['Все', 'Музыка', 'Видео', 'Книги', 'Соцсети', 'Другое'];
   String selectedCategory = 'Все';
 
+  @override
+  void initState() {
+    super.initState();
+    _autoUpdateSubscriptionDates();
+  }
+  // Функция для автообновления дат подписок
+  void _autoUpdateSubscriptionDates() {
+    setState(() {
+      subscriptions = subscriptions.map((subscription) {
+        return subscription.getUpdatedSubscription();
+      }).toList();
+    });
+  }
+
   // Функция для показа модального окна добавления подписки
-  void _showAddSubscriptionModal() {
-    showModalBottomSheet(
+  void _showAddSubscriptionModal() async {
+
+    final newSubscription = await showModalBottomSheet<Subscription>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => AddSubscriptionModal(),
     );
+
+    if (newSubscription != null) {
+      setState(() {
+        subscriptions.add(newSubscription);
+      });
+    }
+  }
+
+  // Функция обновления подписки
+  void _updateSubscription(Subscription updatedSubscription) {
+    setState(() {
+      final index = subscriptions.indexWhere((sub) => sub.id == updatedSubscription.id);
+      if (index != -1) {
+        subscriptions[index] = updatedSubscription;
+      }
+    });
+  }
+
+  // Функция архивации подписки
+  void _archiveSubscription(String subscriptionId) {
+    setState(() {
+      final index = subscriptions.indexWhere((sub) => sub.id == subscriptionId);
+      if (index != -1) {
+        subscriptions[index] = subscriptions[index].copyWith(
+          archivedDate: DateTime.now(),
+        );
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Подписка перемещена в архив'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // Фильтрация подписок по выбранной категории
+    // Фильтруем активные подписки
+    final activeSubscriptions = subscriptions.where((sub) => sub.archivedDate == null).toList();
+    
+    // Фильтруем по выбранной категории
     final filteredSubscriptions = selectedCategory == 'Все'
-        ? subscriptions
-        : subscriptions.where((sub) => sub.category == selectedCategory).toList();
+        ? activeSubscriptions
+        : activeSubscriptions.where((sub) => sub.category == selectedCategory).toList();
 
     return Scaffold(
       key: _scaffoldKey,
@@ -123,6 +111,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         ],
       ),
       
+      // Боковая выдвижная панель
       endDrawer: _buildDrawer(context),
       
       // Кнопка добавления новой подписки
@@ -176,31 +165,63 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             ),
           ),
 
-          // Список подписок
+          // Список подписок или сообщение об отсутствии
           Expanded(
-            child: ListView.separated(
-              padding: EdgeInsets.all(16),
-              itemCount: filteredSubscriptions.length,
-              separatorBuilder: (context, index) => Divider(
-                height: 24,
-                thickness: 1,
-                color: Colors.grey[300],
-              ),
-              itemBuilder: (context, index) {
-                final subscription = filteredSubscriptions[index];
-                return SubscriptionItem(subscription: subscription);
-              },
-            ),
+            child: filteredSubscriptions.isEmpty
+                ? _buildEmptyState()
+                : ListView.builder(
+                    padding: EdgeInsets.all(16),
+                    itemCount: filteredSubscriptions.length,
+                    itemBuilder: (context, index) {
+                      final subscription = filteredSubscriptions[index];
+                      return SubscriptionItem(
+                        subscription: subscription,
+                        onUpdate: _updateSubscription,
+                        onArchive: _archiveSubscription,
+                      );
+                    },
+                  ),
           ),
         ],
       ),
     );
   }
-
+    // Виджет для пустого состояния
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.subscriptions,
+            size: 80,
+            color: Colors.grey[400],
+          ),
+          SizedBox(height: 20),
+          Text(
+            'Нет активных подписок',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[600],
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Нажмите на "+" чтобы добавить первую подписку',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[500],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
   // Функция для построения боковой панели
   Widget _buildDrawer(BuildContext context) {
     return Drawer(
-      // Добавляем выравнивание для правой панели
       child: SafeArea(
         child: Column(
           children: [
