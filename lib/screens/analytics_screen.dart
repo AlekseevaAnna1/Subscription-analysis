@@ -1,16 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
-// class AnalyticsScreen extends StatelessWidget {
-//   const AnalyticsScreen({Key? key}) : super(key: key);
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(title: Text('Аналитика')),
-//       body: Center(child: Text('Аналитика - в разработке')),
-//     );
-//   }
-// }
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -930,4 +919,3 @@ class YearSelectorState extends State<YearSelector> {
     );
   }
 }
-
