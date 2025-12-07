@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:my_first_app/models/subscription.dart';
+import '../models/subscription.dart';
 
 class SubscriptionItem extends StatefulWidget {
   final Subscription subscription;

@@ -1,0 +1,17 @@
+meta:
+  environment: python
+  toolchain:
+    name: pip
+    version: 3.11
+
+run:
+  workdir: backend
+  command: uvicorn main:app --host 0.0.0.0 --port 8000
+  containerPort: 8000
+  exposePort: 8000
+  
+  static:
+    - path: client/build/web
+      mount: /
+      index: index.html
+      spa: true
