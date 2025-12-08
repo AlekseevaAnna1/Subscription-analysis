@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'archive_screen.dart';
-import 'package:my_first_app/models/subscription.dart';
+import '../models/subscription.dart';
 
 // class ProfileScreen extends StatelessWidget {
 //   const ProfileScreen({Key? key}) : super(key: key);
