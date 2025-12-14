@@ -132,12 +132,12 @@ components:
           type: string
           enum: ["music", "video", "books", "games", "education", "social", "other"]
           example: "video"
-        isTrial:
-          type: boolean
-          default: false
-          description: |
-            Trial-период. Определяется при создании и не может быть изменен.
-            Для завершения trial создайте новую подписку.
+        # isTrial:
+        #   type: boolean
+        #   default: false
+        #   description: |
+        #     Trial-период. Определяется при создании и не может быть изменен.
+        #     Для завершения trial создайте новую подписку.
         notifyDays:
           type: integer
           minimum: 1
@@ -234,9 +234,9 @@ components:
         category:
           type: string
           enum: ["music", "video", "books", "games", "education", "social", "other"]
-        isTrial:
-          type: boolean
-          default: false
+        # isTrial:
+        #   type: boolean
+        #   default: false
         notifyDays:
           type: integer
           minimum: 1
