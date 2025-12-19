@@ -1,45 +1,134 @@
-# Miscellaneous
+# ========== ОСЬ и IDE ==========
 *.class
 *.log
 *.pyc
 *.swp
+*.swo
 .DS_Store
 .atom/
-.build/
 .buildlog/
 .history
 .svn/
 .swiftpm/
-migrate_working_dir/
 
-# IntelliJ related
+# IntelliJ/Android Studio
 *.iml
 *.ipr
 *.iws
 .idea/
+.gradle/
+local.properties
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code
+.vscode/
+*.code-workspace
 
-# Flutter/Dart/Pub related
+# ========== FLUTTER/DART ==========
 **/doc/api/
-**/ios/Flutter/.last_build_id
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
+build/           # ВАЖНО: игнорируем ВСЕ папки build
+/web/            # но web оставляем для сборки (или комментируем)
 /coverage/
 
-# Symbolication related
+# Flutter for Web
+*.js
+*.js.map
+*.mjs
+
+# Symbolication
 app.*.symbols
 
-# Obfuscation related
+# Obfuscation
 app.*.map.json
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# ========== PYTHON ==========
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# ========== ПРОЕКТ СПЕЦИФИЧНО ==========
+# TimeWeb
+timeweb_deploy/
+.deploy/
+
+# Базы данных (если используются SQLite)
+backend/*.db
+backend/test.db
+backend/database/*.db
+
+# Логи
+*.log
+logs/
+
+# Временные файлы
+*.tmp
+*.temp
+temp/
+
+# ========== НЕ ИГНОРИРУЕМ ==========
+!pubspec.yaml
+!requirements.txt
+!README.md
+!.gitignore
+!.github/
+!client/pubspec.yaml
+!backend/requirements.txt
+
+# ========== ДРУГОЕ ==========
+# Файлы аутентификации
+*.pem
+*.key
+*.crt
+
+# Backup files
+*.bak
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride

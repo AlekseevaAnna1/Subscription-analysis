@@ -1,0 +1,57 @@
+name: 🚀 Deploy to TimeWeb
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Качаем код
+      - name: 📥 Download code
+        uses: actions/checkout@v3
+      
+      # 2. Собираем Flutter
+      - name: 🎯 Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      
+      - name: 🔨 Build Flutter Web
+        run: |
+          cd client
+          flutter clean
+          flutter pub get
+          flutter build web --release
+      
+      # 3. Подготавливаем файлы для TimeWeb
+      - name: 📦 Prepare for TimeWeb
+        run: |
+          # Создаем папку для загрузки
+          mkdir -p timeweb_deploy
+          mkdir -p timeweb_deploy/backend
+          
+          # Копируем фронтенд (Flutter)
+          cp -r client/build/web/* timeweb_deploy/
+          
+          # Копируем бэкенд (FastAPI)
+          cp -r backend/* timeweb_deploy/backend/
+          
+          # Копируем .htaccess
+          cp timeweb.htaccess timeweb_deploy/.htaccess
+          
+          # Выводим структуру для проверки
+          echo "Структура папки timeweb_deploy:"
+          ls -la timeweb_deploy/
+      
+      # 4. Загружаем на TimeWeb через FTP
+      - name: ⬆️ Upload to TimeWeb
+        uses: SamKirkland/FTP-Deploy-Action@4.3.0
+        with:
+          server: ${{ secrets.TIMEWEB_FTP_SERVER }}
+          username: ${{ secrets.TIMEWEB_FTP_USER }}
+          password: ${{ secrets.TIMEWEB_FTP_PASSWORD }}
+          local-dir: ./timeweb_deploy/
+          server-dir: ./
