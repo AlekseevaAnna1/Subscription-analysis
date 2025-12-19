@@ -1,11 +1,33 @@
-
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, Field
 import re
+from typing import Optional
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
 
 
 class UserRegister(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: str  # ✅ ДОБАВИЛ поле подтверждения
+
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        v = v.lower().strip()
+
+        disposable_domains = [
+            'tempmail.com', '10minutemail.com', 'guerrillamail.com',
+            'mailinator.com', 'yopmail.com', 'throwawaymail.com',
+            'fakeinbox.com', 'trashmail.com', 'temp-mail.org'
+        ]
+
+        domain = v.split('@')[-1]
+        if domain in disposable_domains:
+            raise ValueError('Temporary email addresses are not allowed')
+
+        return v
 
     @field_validator('password')
     @classmethod
@@ -47,19 +69,10 @@ class UserRegister(BaseModel):
 
         return v
 
-    @field_validator('email')
+    @field_validator('confirm_password')
     @classmethod
-    def validate_email(cls, v: str) -> str:
-        v = v.lower().strip()
-
-        disposable_domains = [
-            'tempmail.com', '10minutemail.com', 'guerrillamail.com',
-            'mailinator.com', 'yopmail.com', 'throwawaymail.com',
-            'fakeinbox.com', 'trashmail.com', 'temp-mail.org'
-        ]
-
-        domain = v.split('@')[-1]
-        if domain in disposable_domains:
-            raise ValueError('Temporary email addresses are not allowed')
-
+    def passwords_match(cls, v: str, info) -> str:
+        # Получаем пароль из других полей
+        if 'password' in info.data and info.data['password'] != v:
+            raise ValueError('Passwords do not match')
         return v
