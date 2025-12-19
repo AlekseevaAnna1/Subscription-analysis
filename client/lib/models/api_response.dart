@@ -1,4 +1,5 @@
 class ApiResponse {
+  // Indicates whether the API call was successful
   final bool success;
   final String message;
   final dynamic data;

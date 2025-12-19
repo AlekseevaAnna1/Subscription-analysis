@@ -1,8 +1,7 @@
+// widgets/add_subscription_modal.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../widgets/subscription_item.dart';
 import '../models/subscription.dart';
-
 
 // Модальное окно для добавления новой подписки
 class AddSubscriptionModal extends StatefulWidget {
@@ -17,13 +16,19 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> {
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _daysController = TextEditingController(text: '3');
   
-  bool _isTrial = false;
   DateTime? _selectedDate;
   BillingCycle _billingCycle = BillingCycle.monthly;
   String _selectedCategory = 'Другое';
+  
+  // Добавляем чекбоксы для уведомлений и автопродления
+  bool _notificationsEnabled = true;
+  bool _autoRenewal = false;
 
-  // Список категорий
+  // Список категорий - обновлён в соответствии с enum
   final List<String> _categories = ['Музыка', 'Видео', 'Книги', 'Соцсети', 'Игры', 'Образование', 'Другое'];
+
+  // Список периодичностей
+  final List<String> _billingCycles = ['Ежемесячно', 'Ежеквартально', 'Ежегодно'];
 
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
@@ -42,31 +47,32 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> {
 
   void _addSubscription() {
     if (_formKey.currentState!.validate()) {
-      // Если пробная подписка, устанавливаем стоимость 0
-      final amount = _isTrial ? 0 : int.tryParse(_amountController.text);
+      // Преобразуем сумму в копейки
+      final amount = int.tryParse(_amountController.text);
       
-      // Извлекаем день списания из выбранной даты
-      final billingDay = _selectedDate?.day ?? DateTime.now().day;
+      // Преобразуем строку категории в enum
+      final category = _convertStringToCategory(_selectedCategory);
+      
+      // Преобразуем строку периодичности в enum
+      final billingCycle = _convertStringToBillingCycle(_billingCycles.firstWhere(
+        (cycle) => _getBillingCycleText(cycle) == _getBillingCycleTextForEnum(_billingCycle)
+      ));
 
       final newSubscription = Subscription(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: DateTime.now().millisecondsSinceEpoch.toString(), // Временный ID
         name: _nameController.text,
+        currentAmount: amount ?? 0,
         nextPaymentDate: _selectedDate ?? DateTime.now(),
-        currentAmount: amount,
+        connectedDate: DateTime.now(),
+        archivedDate: null,
+        category: category,
+        notifyDays: int.tryParse(_daysController.text) ?? 3,
+        billingCycle: billingCycle,
+        notificationsEnabled: _notificationsEnabled,
+        autoRenewal: _autoRenewal,
         icon: _getIconForCategory(_selectedCategory),
         color: _getColorForCategory(_selectedCategory),
-        category: _selectedCategory,
-        connectedDate: DateTime.now(),
-        priceHistory: [
-          PriceHistory(
-            startDate: DateTime.now(),
-            amount: amount ?? 0,
-          ),
-        ],
-        isTrial: _isTrial,
-        notifyDays: int.tryParse(_daysController.text) ?? 3,
-        billingCycle: _billingCycle,
-        billingDay: billingDay,
+        priceHistory: [], // Пока пустая история
       );
 
       Navigator.of(context).pop(newSubscription);
@@ -113,10 +119,48 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> {
     }
   }
 
+  // Преобразование строки категории в enum
+  SubscriptionCategory _convertStringToCategory(String category) {
+    switch (category) {
+      case 'Музыка': return SubscriptionCategory.music;
+      case 'Видео': return SubscriptionCategory.video;
+      case 'Книги': return SubscriptionCategory.books;
+      case 'Соцсети': return SubscriptionCategory.social;
+      case 'Игры': return SubscriptionCategory.games;
+      case 'Образование': return SubscriptionCategory.education;
+      case 'Другое': return SubscriptionCategory.other;
+      default: return SubscriptionCategory.other;
+    }
+  }
+
+  // Преобразование строки периодичности в enum
+  BillingCycle _convertStringToBillingCycle(String cycle) {
+    switch (cycle) {
+      case 'Ежемесячно': return BillingCycle.monthly;
+      case 'Ежеквартально': return BillingCycle.quarterly;
+      case 'Ежегодно': return BillingCycle.yearly;
+      default: return BillingCycle.monthly;
+    }
+  }
+
+  // Получение текста периодичности для enum
+  String _getBillingCycleTextForEnum(BillingCycle cycle) {
+    switch (cycle) {
+      case BillingCycle.monthly: return 'Ежемесячно';
+      case BillingCycle.quarterly: return 'Ежеквартально';
+      case BillingCycle.yearly: return 'Ежегодно';
+    }
+  }
+
+  // Получение текста периодичности для строки
+  String _getBillingCycleText(String cycle) {
+    return cycle; // Уже на русском
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
+      height: MediaQuery.of(context).size.height * 0.85, // Увеличиваем высоту для новых полей
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.only(
@@ -132,14 +176,21 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Text(
-                    'Добавить подписку',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Добавить подписку',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
+                    IconButton(
+                      icon: Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
                 ),
                 SizedBox(height: 24),
                 
@@ -149,6 +200,7 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> {
                   decoration: InputDecoration(
                     labelText: 'Название подписки',
                     border: OutlineInputBorder(),
+                    hintText: 'Например: Netflix, Spotify',
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -180,22 +232,21 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> {
                 ),
                 SizedBox(height: 16),
                 
-                // Поле стоимости с логикой для пробной подписки
+                // Поле стоимости
                 TextFormField(
                   controller: _amountController,
-                  keyboardType: TextInputType.number,
-                  enabled: !_isTrial,
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: _isTrial ? 'Стоимость (бесплатный пробный период)' : 'Стоимость',
+                    labelText: 'Стоимость',
                     border: OutlineInputBorder(),
                     suffixText: 'руб.',
-                    hintText: _isTrial ? '0' : null,
+                    hintText: '299',
                   ),
                   validator: (value) {
-                    if (!_isTrial && (value == null || value.isEmpty)) {
+                    if (value == null || value.isEmpty) {
                       return 'Пожалуйста, введите стоимость';
                     }
-                    if (!_isTrial && int.tryParse(value!) == null) {
+                    if (double.tryParse(value) == null) {
                       return 'Пожалуйста, введите число';
                     }
                     return null;
@@ -203,13 +254,13 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> {
                 ),
                 SizedBox(height: 16),
                 
-                // Поле даты с изменяющимся лейблом
+                // Поле даты следующего списания
                 TextFormField(
                   controller: _dateController,
                   readOnly: true,
                   onTap: _selectDate,
                   decoration: InputDecoration(
-                    labelText: _isTrial ? 'Дата окончания пробного периода' : 'Дата следующего списания',
+                    labelText: 'Дата следующего списания',
                     border: OutlineInputBorder(),
                     suffixIcon: Icon(Icons.calendar_today),
                   ),
@@ -222,57 +273,32 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> {
                 ),
                 SizedBox(height: 16),
                 
-                // Периодичность (скрываем для пробной подписки)
-                if (!_isTrial) ...[
-                  DropdownButtonFormField<BillingCycle>(
-                    value: _billingCycle,
-                    decoration: InputDecoration(
-                      labelText: 'Периодичность',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: [
-                      DropdownMenuItem(
-                        value: BillingCycle.monthly,
-                        child: Text('Ежемесячно'),
-                      ),
-                      DropdownMenuItem(
-                        value: BillingCycle.quarterly,
-                        child: Text('Ежеквартально'),
-                      ),
-                      DropdownMenuItem(
-                        value: BillingCycle.yearly,
-                        child: Text('Ежегодно'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _billingCycle = value ?? BillingCycle.monthly;
-                      });
-                    },
+                // Периодичность
+                DropdownButtonFormField<BillingCycle>(
+                  value: _billingCycle,
+                  decoration: InputDecoration(
+                    labelText: 'Периодичность',
+                    border: OutlineInputBorder(),
                   ),
-                  SizedBox(height: 16),
-                ],
-                
-                // Чекбокс пробной подписки
-                Row(
-                  children: [
-                    Checkbox(
-                      value: _isTrial,
-                      onChanged: (bool? value) {
-                        setState(() {
-                          _isTrial = value ?? false;
-                          if (_isTrial) {
-                            // Если стала пробной - устанавливаем стоимость 0
-                            _amountController.text = '0';
-                          } else {
-                            // Если перестала быть пробной - очищаем поле стоимости
-                            _amountController.clear();
-                          }
-                        });
-                      },
+                  items: [
+                    DropdownMenuItem(
+                      value: BillingCycle.monthly,
+                      child: Text('Ежемесячно'),
                     ),
-                    Text('Пробная подписка'),
+                    DropdownMenuItem(
+                      value: BillingCycle.quarterly,
+                      child: Text('Ежеквартально'),
+                    ),
+                    DropdownMenuItem(
+                      value: BillingCycle.yearly,
+                      child: Text('Ежегодно'),
+                    ),
                   ],
+                  onChanged: (value) {
+                    setState(() {
+                      _billingCycle = value ?? BillingCycle.monthly;
+                    });
+                  },
                 ),
                 SizedBox(height: 16),
                 
@@ -281,9 +307,10 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> {
                   controller: _daysController,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
-                    labelText: 'Оповестить за',
+                    labelText: 'Оповестить за (дней)',
                     border: OutlineInputBorder(),
                     suffixText: 'дней',
+                    hintText: '3',
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -292,8 +319,43 @@ class _AddSubscriptionModalState extends State<AddSubscriptionModal> {
                     if (int.tryParse(value) == null) {
                       return 'Пожалуйста, введите число';
                     }
+                    final days = int.parse(value);
+                    if (days < 1 || days > 30) {
+                      return 'Введите число от 1 до 30';
+                    }
                     return null;
                   },
+                ),
+                SizedBox(height: 16),
+                
+                // Чекбокс для уведомлений
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _notificationsEnabled,
+                      onChanged: (bool? value) {
+                        setState(() {
+                          _notificationsEnabled = value ?? true;
+                        });
+                      },
+                    ),
+                    Text('Включить уведомления'),
+                  ],
+                ),
+                
+                // Чекбокс для автопродления
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _autoRenewal,
+                      onChanged: (bool? value) {
+                        setState(() {
+                          _autoRenewal = value ?? false;
+                        });
+                      },
+                    ),
+                    Text('Автопродление'),
+                  ],
                 ),
                 SizedBox(height: 32),
                 

@@ -145,9 +145,9 @@ class ArchiveScreen extends StatelessWidget {
                 children: [
                   _buildDetailRow('Дата подключения:', 
                       DateFormat('dd.MM.yyyy').format(subscription.connectedDate)),
-                  _buildDetailRow('Периодичность:', subscription.getBillingCycleText()),
-                  if (subscription.isTrial)
-                    _buildDetailRow('Тип:', 'Пробная подписка'),
+                  _buildDetailRow('Периодичность списаний:', subscription.billingCycleText),
+                  // if (subscription.isTrial)
+                  //   _buildDetailRow('Тип:', 'Пробная подписка'),
                   
                   // История цен если есть изменения
                   if (subscription.priceHistory.length > 1) ...[

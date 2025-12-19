@@ -4,6 +4,7 @@ import '../models/api_response.dart';
 import '../models/user.dart';
 
 class AuthService {
+  // Как сейчас делаются запросы к API
   static const String baseUrl = 'http://127.0.0.1:8000';
 
   Future<ApiResponse> register(String email, String password) async {

@@ -21,14 +21,26 @@ class SubscriptionItem extends StatefulWidget {
 class _SubscriptionItemState extends State<SubscriptionItem> {
   bool isExpanded = false;
   bool isEditing = false;
-  
+
   late TextEditingController _nameController;
   late TextEditingController _amountController;
   late TextEditingController _notifyDaysController;
   late DateTime _nextPaymentDate;
-  late bool _isTrial;
   late BillingCycle _billingCycle;
-  late String _selectedCategory; // Добавляем переменную для категории
+  late SubscriptionCategory _selectedCategory;
+  late bool _notificationsEnabled;
+  late bool _autoRenewal;
+
+  // Список категорий для UI
+  final List<String> _categoryList = [
+    'Музыка',
+    'Видео',
+    'Книги',
+    'Соцсети',
+    'Игры',
+    'Образование',
+    'Другое',
+  ];
 
   @override
   void initState() {
@@ -38,12 +50,17 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
 
   void _initializeControllers() {
     _nameController = TextEditingController(text: widget.subscription.name);
-    _amountController = TextEditingController(text: widget.subscription.currentAmount?.toString() ?? '');
-    _notifyDaysController = TextEditingController(text: widget.subscription.notifyDays.toString());
+    _amountController = TextEditingController(
+      text: (widget.subscription.currentAmount / 100).toStringAsFixed(2),
+    );
+    _notifyDaysController = TextEditingController(
+      text: widget.subscription.notifyDays.toString(),
+    );
     _nextPaymentDate = widget.subscription.nextPaymentDate;
-    _isTrial = widget.subscription.isTrial;
     _billingCycle = widget.subscription.billingCycle;
-    _selectedCategory = widget.subscription.category; // Инициализируем категорию
+    _selectedCategory = widget.subscription.category;
+    _notificationsEnabled = widget.subscription.notificationsEnabled;
+    _autoRenewal = widget.subscription.autoRenewal;
   }
 
   void _toggleExpanded() {
@@ -64,46 +81,27 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
   void _cancelEditing() {
     setState(() {
       isEditing = false;
-      _initializeControllers(); //  сброс всех изменений к исходным значениям
+      _initializeControllers(); // Сброс всех изменений к исходным значениям
     });
   }
 
   void _saveChanges() {
-    final newAmount = int.tryParse(_amountController.text);
+    final newAmount = (double.tryParse(_amountController.text) ?? 0) * 100;
     final newNotifyDays = int.tryParse(_notifyDaysController.text);
-    
-    final updatedPriceHistory = List<PriceHistory>.from(widget.subscription.priceHistory);
-    
-    // Обновляем историю цен если цена изменилась
-    if (newAmount != null && newAmount != widget.subscription.currentAmount) {
-      if (updatedPriceHistory.isNotEmpty) {
-        final lastRecord = updatedPriceHistory.last;
-        updatedPriceHistory[updatedPriceHistory.length - 1] = PriceHistory(
-          startDate: lastRecord.startDate,
-          endDate: DateTime.now(),
-          amount: lastRecord.amount,
-        );
-      }
-      
-      updatedPriceHistory.add(PriceHistory(
-        startDate: DateTime.now(),
-        amount: newAmount,
-      ));
-    }
 
     final updatedSubscription = widget.subscription.copyWith(
       name: _nameController.text,
       nextPaymentDate: _nextPaymentDate,
-      currentAmount: newAmount,
-      isTrial: _isTrial,
+      currentAmount: newAmount.round(),
       notifyDays: newNotifyDays ?? widget.subscription.notifyDays,
-      priceHistory: updatedPriceHistory,
       billingCycle: _billingCycle,
-      category: _selectedCategory, // Сохраняем выбранную категорию
+      category: _selectedCategory,
+      notificationsEnabled: _notificationsEnabled,
+      autoRenewal: _autoRenewal,
     );
 
     widget.onUpdate(updatedSubscription);
-    
+
     setState(() {
       isEditing = false;
     });
@@ -124,6 +122,48 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
       setState(() {
         _nextPaymentDate = picked;
       });
+    }
+  }
+
+  // Преобразование enum категории в строку для UI
+  String _categoryToString(SubscriptionCategory category) {
+    switch (category) {
+      case SubscriptionCategory.music:
+        return 'Музыка';
+      case SubscriptionCategory.video:
+        return 'Видео';
+      case SubscriptionCategory.books:
+        return 'Книги';
+      case SubscriptionCategory.games:
+        return 'Игры';
+      case SubscriptionCategory.education:
+        return 'Образование';
+      case SubscriptionCategory.social:
+        return 'Соцсети';
+      case SubscriptionCategory.other:
+        return 'Другое';
+    }
+  }
+
+  // Преобразование строки в enum категории
+  SubscriptionCategory _stringToCategory(String category) {
+    switch (category) {
+      case 'Музыка':
+        return SubscriptionCategory.music;
+      case 'Видео':
+        return SubscriptionCategory.video;
+      case 'Книги':
+        return SubscriptionCategory.books;
+      case 'Игры':
+        return SubscriptionCategory.games;
+      case 'Образование':
+        return SubscriptionCategory.education;
+      case 'Соцсети':
+        return SubscriptionCategory.social;
+      case 'Другое':
+        return SubscriptionCategory.other;
+      default:
+        return SubscriptionCategory.other;
     }
   }
 
@@ -176,26 +216,22 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
               ),
               SizedBox(height: 4),
               Text(
-                'Следующее списание: ${widget.subscription.getNextPaymentDateFormatted()}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
+                'Следующее списание: ${widget.subscription.formattedNextPayment}',
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
             ],
           ),
         ),
-        
-        if (widget.subscription.currentAmount != null)
-          Text(
-            '${widget.subscription.currentAmount} руб.',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: Colors.black87,
-            ),
+
+        Text(
+          widget.subscription.formattedAmount,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: Colors.black87,
           ),
-        
+        ),
+
         IconButton(
           icon: Icon(
             isExpanded ? Icons.expand_less : Icons.expand_more,
@@ -212,9 +248,7 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
       padding: EdgeInsets.only(top: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (isEditing) _buildEditForm() else _buildDetails(),
-        ],
+        children: [if (isEditing) _buildEditForm() else _buildDetails()],
       ),
     );
   }
@@ -223,18 +257,40 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildDetailRow('Дата подключения:', 
-            DateFormat('dd.MM.yyyy').format(widget.subscription.connectedDate)),
-        _buildDetailRow('Периодичность:', widget.subscription.getBillingCycleText()),
-        _buildDetailRow('Категория:', widget.subscription.category),
-        _buildDetailRow('Пробная подписка:', widget.subscription.isTrial ? 'Да' : 'Нет'),
-        _buildDetailRow('Оповещать за:', '${widget.subscription.notifyDays} дней'),
-        _buildDetailRow('До списания:', '${widget.subscription.daysUntilPayment} дней'),
-        
-        if (widget.subscription.priceHistory.length > 1) ...[
+        _buildDetailRow(
+          'Дата подключения:',
+          DateFormat('dd.MM.yyyy').format(widget.subscription.connectedDate),
+        ),
+        _buildDetailRow('Периодичность:', widget.subscription.billingCycleText),
+        _buildDetailRow(
+          'Категория:',
+          _categoryToString(widget.subscription.category),
+        ),
+        _buildDetailRow(
+          'Уведомления:',
+          widget.subscription.notificationsEnabled ? 'Включены' : 'Выключены',
+        ),
+        _buildDetailRow(
+          'Автопродление:',
+          widget.subscription.autoRenewal ? 'Включено' : 'Выключено',
+        ),
+        _buildDetailRow(
+          'Оповещать за:',
+          '${widget.subscription.notifyDays} дней',
+        ),
+        _buildDetailRow(
+          'До списания:',
+          '${widget.subscription.daysUntilPayment} дней',
+        ),
+        _buildDetailRow(
+          'Статус:',
+          widget.subscription.isOverdue ? 'Просрочена' : 'Активна',
+        ),
+
+        if (widget.subscription.priceHistory.isNotEmpty) ...[
           SizedBox(height: 16),
           Text(
-            'История изменений цены:',
+            'История платежей:',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -242,11 +298,11 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
             ),
           ),
           SizedBox(height: 8),
-          ...widget.subscription.priceHistory.map((history) => 
-            _buildPriceHistoryItem(history)
-          ).toList(),
+          ...widget.subscription.priceHistory
+              .map((history) => _buildPriceHistoryItem(history))
+              .toList(),
         ],
-        
+
         SizedBox(height: 16),
         Row(
           children: [
@@ -292,10 +348,7 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
           Expanded(
             child: Text(
               value,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ),
         ],
@@ -309,38 +362,14 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
       child: Row(
         children: [
           Text(
-            '${history.amount} руб.',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
+            '${(history.amount / 100).toStringAsFixed(2)} руб.',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
           SizedBox(width: 8),
           Text(
-            'с ${DateFormat('dd.MM.yyyy').format(history.startDate)}',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
+            '${DateFormat('dd.MM.yyyy').format(history.startDate)} - ${history.endDate != null ? DateFormat('dd.MM.yyyy').format(history.endDate!) : 'настоящее время'}',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
-          if (history.endDate != null) ...[
-            Text(
-              ' по ${DateFormat('dd.MM.yyyy').format(history.endDate!)}',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
-            ),
-          ] else ...[
-            Text(
-              ' - по настоящее время',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.green[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -358,31 +387,26 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
           ),
         ),
         SizedBox(height: 12),
-        
-        // Выбор категории при редактировании
+
+        // Выбор категории
         DropdownButtonFormField<String>(
-          value: _selectedCategory,
+          value: _categoryToString(_selectedCategory),
           decoration: InputDecoration(
             labelText: 'Категория',
             border: OutlineInputBorder(),
           ),
-          items: [
-            'Музыка', 'Видео', 'Книги', 'Соцсети', 'Игры', 'Образование', 'Другое'
-          ].map((category) {
-            return DropdownMenuItem(
-              value: category,
-              child: Text(category),
-            );
+          items: _categoryList.map((category) {
+            return DropdownMenuItem(value: category, child: Text(category));
           }).toList(),
           onChanged: (value) {
             setState(() {
-              _selectedCategory = value ?? 'Другое';
+              _selectedCategory = _stringToCategory(value ?? 'Другое');
             });
           },
         ),
         SizedBox(height: 12),
-        
-        // Поле даты
+
+        // Поле даты следующего списания
         TextFormField(
           controller: TextEditingController(
             text: DateFormat('dd.MM.yyyy').format(_nextPaymentDate),
@@ -390,87 +414,97 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
           readOnly: true,
           onTap: _selectDate,
           decoration: InputDecoration(
-            labelText: _isTrial ? 'Дата окончания пробного периода' : 'Дата следующего списания',
+            labelText: 'Дата следующего списания',
             border: OutlineInputBorder(),
             suffixIcon: Icon(Icons.calendar_today),
           ),
         ),
         SizedBox(height: 12),
-        
-        // Поле стоимости с логикой для пробной подписки
+
+        // Поле стоимости
         TextFormField(
           controller: _amountController,
-          keyboardType: TextInputType.number,
-          enabled: !_isTrial,
+          keyboardType: TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
-            labelText: _isTrial ? 'Стоимость (бесплатный пробный период)' : 'Стоимость',
+            labelText: 'Стоимость',
             border: OutlineInputBorder(),
             suffixText: 'руб.',
           ),
         ),
         SizedBox(height: 12),
-        
-        // Периодичность (только для не пробных подписок)
-        if (!_isTrial) ...[
-          DropdownButtonFormField<BillingCycle>(
-            value: _billingCycle,
-            decoration: InputDecoration(
-              labelText: 'Периодичность',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              DropdownMenuItem(
-                value: BillingCycle.monthly,
-                child: Text('Ежемесячно'),
-              ),
-              DropdownMenuItem(
-                value: BillingCycle.quarterly,
-                child: Text('Ежеквартально'),
-              ),
-              DropdownMenuItem(
-                value: BillingCycle.yearly,
-                child: Text('Ежегодно'),
-              ),
-            ],
-            onChanged: (value) {
-              setState(() {
-                _billingCycle = value ?? BillingCycle.monthly;
-              });
-            },
+
+        // Периодичность
+        DropdownButtonFormField<BillingCycle>(
+          value: _billingCycle,
+          decoration: InputDecoration(
+            labelText: 'Периодичность',
+            border: OutlineInputBorder(),
           ),
-          SizedBox(height: 12),
-        ],
-        
-        // Чекбокс пробной подписки
+          items: [
+            DropdownMenuItem(
+              value: BillingCycle.monthly,
+              child: Text('Ежемесячно'),
+            ),
+            DropdownMenuItem(
+              value: BillingCycle.quarterly,
+              child: Text('Ежеквартально'),
+            ),
+            DropdownMenuItem(
+              value: BillingCycle.yearly,
+              child: Text('Ежегодно'),
+            ),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _billingCycle = value ?? BillingCycle.monthly;
+            });
+          },
+        ),
+        SizedBox(height: 12),
+
+        // Поле дней для оповещения
+        TextFormField(
+          controller: _notifyDaysController,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'Оповещать за (дней)',
+            border: OutlineInputBorder(),
+            hintText: '3',
+          ),
+        ),
+        SizedBox(height: 12),
+
+        // Чекбокс для уведомлений
         Row(
           children: [
             Checkbox(
-              value: _isTrial,
-              onChanged: (value) {
+              value: _notificationsEnabled,
+              onChanged: (bool? value) {
                 setState(() {
-                  _isTrial = value ?? false;
-                  if (_isTrial) {
-                    _amountController.text = '0';
-                  }
+                  _notificationsEnabled = value ?? true;
                 });
               },
             ),
-            Text('Пробная подписка'),
-            SizedBox(width: 24),
-            Expanded(
-              child: TextFormField(
-                controller: _notifyDaysController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Оповещать за (дней)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
+            Text('Включить уведомления'),
+          ],
+        ),
+
+        // Чекбокс для автопродления
+        Row(
+          children: [
+            Checkbox(
+              value: _autoRenewal,
+              onChanged: (bool? value) {
+                setState(() {
+                  _autoRenewal = value ?? false;
+                });
+              },
             ),
+            Text('Автопродление'),
           ],
         ),
         SizedBox(height: 16),
-        
+
         Row(
           children: [
             ElevatedButton(
@@ -482,10 +516,7 @@ class _SubscriptionItemState extends State<SubscriptionItem> {
               child: Text('Сохранить'),
             ),
             SizedBox(width: 12),
-            OutlinedButton(
-              onPressed: _cancelEditing,
-              child: Text('Отмена'),
-            ),
+            OutlinedButton(onPressed: _cancelEditing, child: Text('Отмена')),
           ],
         ),
       ],
