@@ -9,6 +9,7 @@ import 'profile_screen.dart';
 import 'analytics_screen.dart';
 import 'notifications_screen.dart';
 import 'archive_screen.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class SubscriptionsScreen extends StatefulWidget {
   SubscriptionsScreen({Key? key}) : super(key: key);
@@ -115,48 +116,59 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final subscriptionProvider = context.watch<SubscriptionProvider>();
-    final authProvider = context.watch<AuthProvider>();
+Widget build(BuildContext context) {
+  final subscriptionProvider = context.watch<SubscriptionProvider>();
+  final authProvider = context.watch<AuthProvider>();
 
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: Color.fromARGB(248, 223, 218, 245),
-      appBar: AppBar(
-        title: Text('Мои подписки'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-        actions: [
-          // Кнопка обновления
-          IconButton(
-            icon: Icon(Icons.refresh, color: Colors.black),
-            onPressed: subscriptionProvider.isLoading ? null : _refreshData,
-          ),
-          // Кнопка меню
-          IconButton(
-            icon: Icon(Icons.menu, color: Colors.black),
-            onPressed: () {
-              _scaffoldKey.currentState!.openEndDrawer();
-            },
-          ),
-        ],
-      ),
-      
-      // Боковая выдвижная панель
-      endDrawer: _buildDrawer(context, authProvider),
-      
-      // Кнопка добавления новой подписки
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddSubscriptionModal,
-        backgroundColor: Colors.blue,
-        child: Icon(Icons.add, color: Colors.white, size: 28),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-
-      body: _buildBody(subscriptionProvider),
-    );
-  }
+  return Scaffold(
+    key: _scaffoldKey,
+    backgroundColor: Color.fromARGB(248, 223, 218, 245),
+    appBar: AppBar(
+      title: Text('Мои подписки'),
+      backgroundColor: Colors.white,
+      foregroundColor: Colors.black,
+      elevation: 0,
+      actions: [
+        IconButton(
+          icon: Icon(Icons.refresh, color: Colors.black),
+          onPressed: subscriptionProvider.isLoading ? null : _refreshData,
+        ),
+        // Кнопка меню ТОЛЬКО для мобильных
+        if (!kIsWeb) IconButton(
+          icon: Icon(Icons.menu, color: Colors.black),
+          onPressed: () {
+            _scaffoldKey.currentState!.openEndDrawer();
+          },
+        ),
+      ],
+    ),
+    
+    // Боковая панель ТОЛЬКО для мобильных
+    endDrawer: kIsWeb ? null : _buildDrawer(context, authProvider),
+    
+    // Основное тело
+    body: kIsWeb 
+      ? Row( // Для веба: Row с постоянной панелью
+          children: [
+            _buildPersistentDrawer(context, authProvider),
+            Expanded(
+              child: _buildBody(subscriptionProvider),
+            ),
+          ],
+        )
+      : _buildBody(subscriptionProvider), // Для мобильных: обычный контент
+    
+    // Кнопка добавления
+    floatingActionButton: FloatingActionButton(
+      onPressed: _showAddSubscriptionModal,
+      backgroundColor: Colors.blue,
+      child: Icon(Icons.add, color: Colors.white, size: 28),
+    ),
+    floatingActionButtonLocation: kIsWeb
+      ? FloatingActionButtonLocation.endFloat
+      : FloatingActionButtonLocation.centerFloat,
+  );
+}
 
   // Построение основного содержимого экрана
   Widget _buildBody(SubscriptionProvider provider) {
@@ -217,7 +229,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       children: [
         // Поисковая строка
         Padding(
-          padding: EdgeInsets.all(16),
+          padding: EdgeInsets.all(kIsWeb ? 24 : 16), // Больше отступы для веба
           child: TextField(
             decoration: InputDecoration(
               hintText: 'Поиск подписок...',
@@ -239,8 +251,11 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
         // Горизонтальная полоска с категориями
         Container(
-          height: 60,
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          height: kIsWeb ? 70 : 60, // Выше для веба
+          padding: EdgeInsets.symmetric(
+            horizontal: kIsWeb ? 24 : 16,
+            vertical: kIsWeb ? 12 : 8,
+          ),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: categories.length,
@@ -444,18 +459,18 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       Navigator.pop(context);
                     },
                   ),
-                  _buildDrawerItem(
-                    icon: Icons.archive,
-                    title: 'Архив подписок',
-                    badge: context.read<SubscriptionProvider>().archivedSubscriptions.length,
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => ArchiveScreen()),
-                      );
-                    },
-                  ),
+                  // _buildDrawerItem(
+                  //   icon: Icons.archive,
+                  //   title: 'Архив подписок',
+                  //   badge: context.read<SubscriptionProvider>().archivedSubscriptions.length,
+                  //   onTap: () {
+                  //     Navigator.pop(context);
+                  //     Navigator.push(
+                  //       context,
+                  //       MaterialPageRoute(builder: (context) => ArchiveScreen()),
+                  //     );
+                  //   },
+                  // ),
                   _buildDrawerItem(
                     icon: Icons.person,
                     title: 'Личный кабинет',
@@ -536,6 +551,126 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       onTap: onTap,
     );
   }
+
+Widget _buildPersistentDrawer(BuildContext context, AuthProvider authProvider) {
+  return Container(
+    width: 280, // Фиксированная ширина для веб-панели
+    color: Colors.white,
+    child: SafeArea(
+      child: Column(
+        children: [
+          // Заголовок панели (можно упростить для веба)
+          Container(
+            padding: EdgeInsets.all(24),
+            color: Colors.blue,
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 25,
+                  backgroundColor: Colors.white,
+                  child: Icon(
+                    Icons.person,
+                    size: 25,
+                    color: Colors.blue,
+                  ),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  authProvider.user?.email ?? 'Пользователь',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          
+          // Пункты меню
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _buildPersistentDrawerItem(
+                  icon: Icons.subscriptions,
+                  title: 'Подписки',
+                  onTap: () {
+                    // Уже на экране подписок
+                  },
+                ),
+                _buildPersistentDrawerItem(
+                  icon: Icons.person,
+                  title: 'Личный кабинет',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => ProfileScreen()),
+                    );
+                  },
+                ),
+                _buildPersistentDrawerItem(
+                  icon: Icons.analytics,
+                  title: 'Аналитика',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => AnalyticsScreen()),
+                    );
+                  },
+                ),
+                _buildPersistentDrawerItem(
+                  icon: Icons.notifications,
+                  title: 'Уведомления',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => NotificationsScreen()),
+                    );
+                  },
+                ),
+                Divider(height: 24, thickness: 1),
+                _buildPersistentDrawerItem(
+                  icon: Icons.exit_to_app,
+                  title: 'Выйти',
+                  onTap: () {
+                    _showLogoutDialog(context, authProvider);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// Вспомогательный метод для пунктов постоянного меню
+Widget _buildPersistentDrawerItem({
+  required IconData icon,
+  required String title,
+  required VoidCallback onTap,
+}) {
+  return InkWell(
+    onTap: onTap,
+    child: Container(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey[700], size: 22),
+          SizedBox(width: 16),
+          Text(
+            title,
+            style: TextStyle(fontSize: 15),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 
   // Функция для показа диалога выхода
   void _showLogoutDialog(BuildContext context, AuthProvider authProvider) {
