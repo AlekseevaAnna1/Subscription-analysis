@@ -1,37 +1,203 @@
-// lib/screens/archive_screen.dart
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../models/subscription.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:intl/intl.dart';
 import '../providers/subscription_provider.dart';
+import '../widgets/app_drawer.dart';
+import '../models/subscription.dart';
 
-class ArchiveScreen extends StatelessWidget {
-  const ArchiveScreen({Key? key}) : super(key: key); // Убираем required subscriptions
+class ArchiveScreen extends StatefulWidget {
+  const ArchiveScreen({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    // Получаем архивные подписки из провайдера
-    final subscriptionProvider = context.watch<SubscriptionProvider>();
-    final archivedSubscriptions = subscriptionProvider.archivedSubscriptions;
+  State<ArchiveScreen> createState() => _ArchiveScreenState();
+}
 
-    return Scaffold(
-      backgroundColor: Color.fromARGB(248, 223, 218, 245),
-      appBar: AppBar(
-        title: Text('Архив подписок'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
-      body: archivedSubscriptions.isEmpty
-          ? _buildEmptyState()
-          : ListView.builder(
-              padding: EdgeInsets.all(16),
-              itemCount: archivedSubscriptions.length,
-              itemBuilder: (context, index) {
-                final subscription = archivedSubscriptions[index];
-                return _buildArchivedSubscriptionItem(subscription);
-              },
+class _ArchiveScreenState extends State<ArchiveScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  @override
+  void initState() {
+    super.initState();
+    // Загружаем архивные подписки при инициализации
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = context.read<SubscriptionProvider>();
+      if (!provider.hasLoaded) {
+        provider.loadSubscriptions();
+      }
+    });
+  }
+
+  void _refreshData() async {
+    final provider = context.read<SubscriptionProvider>();
+    await provider.loadSubscriptions(forceRefresh: true);
+    
+    if (provider.error == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Данные обновлены'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  // TODO: Реализовать восстановление подписки в будущем
+  // void _restoreSubscription(String subscriptionId) async {
+  //   final provider = context.read<SubscriptionProvider>();
+  //   final success = await provider.restoreFromArchive(subscriptionId);
+  //   
+  //   if (success) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text('Подписка восстановлена'),
+  //         backgroundColor: Colors.green,
+  //       ),
+  //     );
+  //   } else if (provider.error != null) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text(provider.error!),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //   }
+  // }
+
+  @override
+Widget build(BuildContext context) {
+  return Scaffold(
+    key: _scaffoldKey,
+    backgroundColor: const Color.fromARGB(248, 223, 218, 245),
+    appBar: AppBar(
+      title: const Text('Архив подписок'),
+      backgroundColor: Colors.white,
+      foregroundColor: Colors.black,
+      elevation: 0,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh, color: Colors.black),
+          onPressed: _refreshData,
+          tooltip: 'Обновить архив',
+        ),
+      ],
+    ),
+    
+    endDrawer: kIsWeb ? null : const AppDrawer(
+      currentScreen: AppScreen.archive,
+      isMobile: true,
+    ),
+    
+    body: kIsWeb 
+      ? Row(
+          children: [
+            const AppDrawer(
+              currentScreen: AppScreen.archive,
+              isMobile: false,
             ),
+            Expanded(
+              child: _buildBody(context),
+            ),
+          ],
+        )
+      : _buildBody(context),
+  );
+}
+
+  Widget _buildBody(BuildContext context) {
+    return Consumer<SubscriptionProvider>(
+      builder: (context, provider, child) {
+        // Если загрузка и нет данных
+        if (provider.isLoading && !provider.hasLoaded) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        // Если ошибка
+        if (provider.error != null && !provider.hasLoaded) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                const SizedBox(height: 16),
+                const Text(
+                  'Ошибка загрузки архива',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    provider.error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => provider.loadSubscriptions(forceRefresh: true),
+                  child: const Text('Повторить'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final archivedSubscriptions = provider.archivedSubscriptions;
+
+        return Column(
+          children: [
+            // Статистика архива
+            if (archivedSubscriptions.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Всего в архиве: ${archivedSubscriptions.length}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      'Сумма: ${_calculateTotal(archivedSubscriptions)} ₽',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Список архивных подписок
+            Expanded(
+              child: archivedSubscriptions.isEmpty
+                  ? _buildEmptyState()
+                  : RefreshIndicator(
+                      onRefresh: () async {
+                        await provider.loadSubscriptions(forceRefresh: true);
+                      },
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: archivedSubscriptions.length,
+                        itemBuilder: (context, index) {
+                          final subscription = archivedSubscriptions[index];
+                          return _buildArchivedSubscriptionItem(subscription);
+                        },
+                      ),
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -45,7 +211,7 @@ class ArchiveScreen extends StatelessWidget {
             size: 80,
             color: Colors.grey[400],
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 20),
           Text(
             'Архив пуст',
             style: TextStyle(
@@ -54,7 +220,7 @@ class ArchiveScreen extends StatelessWidget {
               color: Colors.grey[600],
             ),
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Text(
             'Здесь будут ваши завершенные подписки',
             style: TextStyle(
@@ -69,21 +235,25 @@ class ArchiveScreen extends StatelessWidget {
 
   Widget _buildArchivedSubscriptionItem(Subscription subscription) {
     return Card(
-      margin: EdgeInsets.symmetric(vertical: 4, horizontal: 0),
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
       elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Верхняя строка с информацией
             Row(
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
                     color: subscription.color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     subscription.icon,
@@ -91,7 +261,7 @@ class ArchiveScreen extends StatelessWidget {
                     size: 24,
                   ),
                 ),
-                SizedBox(width: 12),
+                const SizedBox(width: 12),
                 
                 Expanded(
                   child: Column(
@@ -99,23 +269,15 @@ class ArchiveScreen extends StatelessWidget {
                     children: [
                       Text(
                         subscription.name,
-                        style: TextStyle(
-                          fontSize: 16,
+                        style: const TextStyle(
+                          fontSize: 18,
                           fontWeight: FontWeight.w600,
                           color: Colors.black87,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        'Категория: ${subscription.category.toString().split('.').last}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Заархивирована: ${DateFormat('dd.MM.yyyy').format(subscription.archivedDate!)}',
+                        _getCategoryName(subscription.category),
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey[600],
@@ -125,47 +287,48 @@ class ArchiveScreen extends StatelessWidget {
                   ),
                 ),
                 
-                if (subscription.currentAmount > 0)
-                  Text(
-                    '${subscription.currentAmount} руб.',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
-                  ),
+                // TODO: Добавить кнопку восстановления в будущем
+                // IconButton(
+                //   icon: const Icon(Icons.restore, color: Colors.blue),
+                //   onPressed: () => _restoreSubscription(subscription.id),
+                //   tooltip: 'Восстановить подписку',
+                // ),
               ],
             ),
             
-            // Дополнительная информация
-            Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildDetailRow('Дата подключения:', 
-                      DateFormat('dd.MM.yyyy').format(subscription.connectedDate)),
-                  _buildDetailRow('Периодичность списаний:', subscription.billingCycleText),
-                  
-                  // История цен если есть изменения
-                  if (subscription.priceHistory.length > 1) ...[
-                    SizedBox(height: 8),
-                    Text(
-                      'История изменений цены:',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    ...subscription.priceHistory.map((history) => 
-                      _buildPriceHistoryItem(history)
-                    ).toList(),
-                  ],
-                ],
-              ),
+            // Детали подписки
+            const SizedBox(height: 12),
+            _buildDetailRow(
+              'Дата архивации:',
+              subscription.archivedDate != null
+                  ? DateFormat('dd.MM.yyyy').format(subscription.archivedDate!)
+                  : 'Не указана',
             ),
+            _buildDetailRow(
+              'Дата подключения:',
+              DateFormat('dd.MM.yyyy').format(subscription.connectedDate),
+            ),
+            _buildDetailRow(
+              'Сумма:',
+              '${subscription.currentAmount} ₽ / ${subscription.billingCycleText}',
+            ),
+            
+            // История цен если есть изменения
+            if (subscription.priceHistory.length > 1) ...[
+              const SizedBox(height: 8),
+              Text(
+                'История списаний:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 4),
+              ...subscription.priceHistory.map((history) => 
+                _buildPriceHistoryItem(history)
+              ).toList(),
+            ],
           ],
         ),
       ),
@@ -174,23 +337,26 @@ class ArchiveScreen extends StatelessWidget {
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[700],
+          SizedBox(
+            width: 140,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[700],
+              ),
             ),
           ),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 color: Colors.black87,
               ),
@@ -203,17 +369,17 @@ class ArchiveScreen extends StatelessWidget {
 
   Widget _buildPriceHistoryItem(PriceHistory history) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 1),
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
           Text(
-            '${history.amount} руб.',
-            style: TextStyle(
+            '${history.amount} ₽',
+            style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
             ),
           ),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           Text(
             'с ${DateFormat('dd.MM.yyyy').format(history.startDate)}',
             style: TextStyle(
@@ -233,5 +399,31 @@ class ArchiveScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _getCategoryName(SubscriptionCategory category) {
+    switch (category) {
+      case SubscriptionCategory.music:
+        return 'Музыка';
+      case SubscriptionCategory.video:
+        return 'Видео';
+      case SubscriptionCategory.books:
+        return 'Книги';
+      case SubscriptionCategory.games:
+        return 'Игры';
+      case SubscriptionCategory.education:
+        return 'Образование';
+      case SubscriptionCategory.social:
+        return 'Соцсети';
+      case SubscriptionCategory.other:
+        return 'Другое';
+      default:
+        return 'Неизвестно';
+    }
+  }
+
+  String _calculateTotal(List<Subscription> subscriptions) {
+    final total = subscriptions.fold(0.0, (sum, sub) => sum + sub.currentAmount);
+    return total.toStringAsFixed(0);
   }
 }
