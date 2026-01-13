@@ -13,7 +13,8 @@ from backend.schemas.sub import (
     SubscriptionWithPriceHistory,
     PriceHistoryItem,
     SubCategoryEnum,
-    SubPeriodEnum
+    SubPeriodEnum,
+    UpdateSubscriptionRequest
 )
 from backend.routes.auth import get_current_user
 from backend.services.notifications_service import NotificationService
@@ -186,15 +187,19 @@ def get_user_subscriptions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
-    
     query = db.query(Subscription).filter(Subscription.userId == current_user.id)
     
     if not archived:
+        # Важно: archived=False должно показывать ТОЛЬКО неархивированные
         query = query.filter(Subscription.archivedDate.is_(None))
+    else:
+        # archived=True должно показывать ТОЛЬКО архивированные
+        query = query.filter(Subscription.archivedDate.is_not(None))
     
     # Сортировка по дате следующего платежа (ближайшие сверху)
     subscriptions = query.order_by(Subscription.nextPaymentDate.asc()).all()
+    
+    print(f"🔍 Запрос подписок: archived={archived}, найдено: {len(subscriptions)}")
     
     return [
         SubscriptionResponse(
@@ -306,3 +311,212 @@ def get_subscription_price_history(
         )
         for ph in price_history
     ]
+@router.patch("/subscriptions/{subscription_id}",
+              response_model=SubscriptionResponse,
+              summary="Обновить подписку",
+              description="Обновляет данные подписки. Если изменяется цена, создается новая запись в истории цен")
+def update_subscription(
+    subscription_id: int,
+    update_data: UpdateSubscriptionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Находим подписку
+    subscription = db.query(Subscription).filter(
+        and_(
+            Subscription.id == subscription_id,
+            Subscription.userId == current_user.id
+        )
+    ).first()
+    
+    if not subscription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription not found"
+        )
+    
+    # Проверяем, не архивирована ли подписка
+    if subscription.archivedDate:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot update archived subscription"
+        )
+    
+    # Проверяем уникальность имени, если оно изменяется
+    if update_data.name and update_data.name != subscription.name:
+        existing_subscription = db.query(Subscription).filter(
+            and_(
+                Subscription.name == update_data.name,
+                Subscription.userId == current_user.id,
+                Subscription.id != subscription_id
+            )
+        ).first()
+        
+        if existing_subscription:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Subscription with this name already exists"
+            )
+    
+    # Валидация даты следующего платежа
+    if update_data.nextPaymentDate and update_data.nextPaymentDate < date.today():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Next payment date cannot be in the past"
+        )
+    
+    # Запоминаем старую цену для проверки
+    old_amount = subscription.currentAmount
+    
+    # Обновляем поля - используем exclude_none=True
+    update_dict = update_data.dict(exclude_none=True)
+    
+    # Удаляем None значения, оставляем только те, что действительно переданы
+    update_dict = {k: v for k, v in update_dict.items() if v is not None}
+    
+    # Конвертируем Enum в строки при необходимости
+    if 'category' in update_dict:
+        if isinstance(update_dict['category'], SubCategoryEnum):
+            update_dict['category'] = update_dict['category'].value
+    
+    if 'billingCycle' in update_dict:
+        if isinstance(update_dict['billingCycle'], SubPeriodEnum):
+            update_dict['billingCycle'] = update_dict['billingCycle'].value
+    
+    # Обновляем подписку
+    for field, value in update_dict.items():
+        if hasattr(subscription, field):
+            setattr(subscription, field, value)
+    
+    subscription.updatedAt = datetime.utcnow()
+    
+    try:
+        # Если цена изменилась, создаем запись в истории цен
+        if 'currentAmount' in update_dict and update_data.currentAmount != old_amount:
+            # Завершаем текущую запись в истории цен
+            current_price_history = db.query(PriceHistory).filter(
+                and_(
+                    PriceHistory.subscriptionId == subscription_id,
+                    PriceHistory.endDate.is_(None)
+                )
+            ).first()
+            
+            if current_price_history:
+                current_price_history.endDate = date.today()
+            
+            # Создаем новую запись
+            new_price_history = PriceHistory(
+                subscriptionId=subscription_id,
+                amount=update_data.currentAmount,
+                startDate=date.today(),
+                createdAt=datetime.utcnow()
+            )
+            db.add(new_price_history)
+        
+        db.commit()
+        db.refresh(subscription)
+        
+        # Создаем ответ вручную (без from_orm)
+        return SubscriptionResponse(
+            id=subscription.id,
+            userId=subscription.userId,
+            name=subscription.name,
+            currentAmount=subscription.currentAmount,
+            nextPaymentDate=subscription.nextPaymentDate,
+            connectedDate=subscription.connectedDate,
+            archivedDate=subscription.archivedDate,
+            category=subscription.category,
+            notifyDays=subscription.notifyDays,
+            billingCycle=subscription.billingCycle,
+            autoRenewal=subscription.autoRenewal,
+            notificationsEnabled=subscription.notificationsEnabled,
+            createdAt=subscription.createdAt,
+            updatedAt=subscription.updatedAt
+        )
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Ошибка при обновлении подписки: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update subscription: {str(e)}"
+        )
+    
+@router.patch("/subscriptions/{subscription_id}/archive",
+              response_model=SubscriptionResponse,
+              summary="Архивировать подписку",
+              description="Устанавливает текущую дату в поле archivedDate")
+def archive_subscription(
+    subscription_id: int,
+    current_user: User = Depends(get_current_user),  # Убираем archive_data из параметров
+    db: Session = Depends(get_db)
+):
+    """
+    Просто устанавливает дату архивации = сегодня.
+    Тело запроса не требуется.
+    """
+    
+    print(f"🔍 Архивация подписки ID: {subscription_id} для пользователя ID: {current_user.id}")
+    
+    # Находим подписку
+    subscription = db.query(Subscription).filter(
+        and_(
+            Subscription.id == subscription_id,
+            Subscription.userId == current_user.id
+        )
+    ).first()
+    
+    if not subscription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription not found"
+        )
+    
+    # Проверяем, не архивирована ли уже
+    if subscription.archivedDate:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Subscription is already archived"
+        )
+    
+    # Устанавливаем дату архивации на сегодня
+    subscription.archivedDate = date.today()
+    subscription.updatedAt = datetime.utcnow()
+    
+    try:
+        db.commit()
+        db.refresh(subscription)
+        
+        print(f"✅ Подписка '{subscription.name}' успешно архивирована")
+        
+        # Возвращаем обновленную подписку
+        return SubscriptionResponse(
+            id=subscription.id,
+            userId=subscription.userId,
+            name=subscription.name,
+            currentAmount=subscription.currentAmount,
+            nextPaymentDate=subscription.nextPaymentDate,
+            connectedDate=subscription.connectedDate,
+            archivedDate=subscription.archivedDate,
+            category=subscription.category,
+            notifyDays=subscription.notifyDays,
+            billingCycle=subscription.billingCycle,
+            autoRenewal=subscription.autoRenewal,
+            notificationsEnabled=subscription.notificationsEnabled,
+            createdAt=subscription.createdAt,
+            updatedAt=subscription.updatedAt
+        )
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Ошибка при архивации: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to archive subscription"
+        )

@@ -60,3 +60,5 @@ class Subscription(Base):
         if self.nextPaymentDate:
             return (self.nextPaymentDate - date.today()).days
         return 0
+    
+    

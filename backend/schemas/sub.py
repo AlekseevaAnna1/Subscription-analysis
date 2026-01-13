@@ -80,3 +80,28 @@ class SubscriptionResponse(BaseModel):
 
 class SubscriptionWithPriceHistory(SubscriptionResponse):
     priceHistory: List[PriceHistoryItem] = []
+
+
+class UpdateSubscriptionRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100, description="Название подписки")
+    currentAmount: Optional[int] = Field(None, ge=0, description="Текущая стоимость подписки")
+    nextPaymentDate: Optional[date] = None
+    category: Optional[SubCategoryEnum] = Field(None, description="Категория подписки")
+    notifyDays: Optional[int] = Field(None, ge=1, le=30, description="Дней до уведомления")
+    billingCycle: Optional[SubPeriodEnum] = Field(None, description="Период оплаты")
+    autoRenewal: Optional[bool] = Field(None, description="Автопродление подписки")
+    notificationsEnabled: Optional[bool] = Field(None, description="Включены ли уведомления")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "name": "Netflix Premium Updated",
+                "currentAmount": 1599,
+                "nextPaymentDate": "2024-12-20",
+                "category": "video",
+                "notifyDays": 5,
+                "billingCycle": "monthly",
+                "autoRenewal": True,
+                "notificationsEnabled": False
+            }
+        }
