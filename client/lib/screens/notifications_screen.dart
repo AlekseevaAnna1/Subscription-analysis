@@ -19,55 +19,65 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String _searchQuery = '';
 
   @override
-void initState() {
-  super.initState();
-  // Загружаем уведомления при инициализации экрана
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-  final authProvider = context.read<AuthProvider>();
-  final notificationProvider = context.read<NotificationProvider>();
-  
-  if (authProvider.isAuthenticated && authProvider.token != null) {
-    notificationProvider.initializeWithToken(authProvider.token!);
-    notificationProvider.loadNotificationGroups();
-  } else {
-    notificationProvider.setError('Для просмотра уведомлений требуется авторизация');
+  void initState() {
+    super.initState();
+    // Загружаем уведомления при инициализации экрана
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // ✅ ИСПОЛЬЗУЕМ read вместо watch
+      final authProvider = context.read<AuthProvider>();
+      final notificationProvider = context.read<NotificationProvider>();
+      
+      // Проверяем авторизацию
+      if (authProvider.isAuthenticated && authProvider.token != null) {
+        // Устанавливаем токен перед загрузкой
+        notificationProvider.setAuthToken(authProvider.token!);
+        
+        if (!notificationProvider.hasLoaded) {
+          notificationProvider.loadNotificationGroups();
+        }
+      } else {
+        // Показываем сообщение об ошибке
+        _showErrorSnackBar('Требуется авторизация для просмотра уведомлений');
+      }
+    });
   }
-});
-}
 
   // Функция для обновления (перезагрузки) данных
   void _refreshData() async {
-  final authProvider = context.read<AuthProvider>();
-  final notificationProvider = context.read<NotificationProvider>();
-  
-  // Проверяем авторизацию перед обновлением
-  if (!authProvider.isAuthenticated || authProvider.token == null) {
-    _showErrorSnackBar('Требуется авторизация');
-    return;
+    // ✅ ИСПОЛЬЗУЕМ read вместо watch
+    final authProvider = context.read<AuthProvider>();
+    final provider = context.read<NotificationProvider>();
+    
+    // Проверяем авторизацию
+    if (!authProvider.isAuthenticated || authProvider.token == null) {
+      _showErrorSnackBar('Требуется авторизация');
+      return;
+    }
+    
+    await provider.refresh();
+    
+    if (provider.error == null) {
+      _showSnackBar('Уведомления обновлены');
+    }
   }
-  
-  // 🔥 ИСПОЛЬЗУЕМ НОВЫЙ МЕТОД - проверяем и инициализируем если нужно
-  if (!notificationProvider.isInitialized) {
-    notificationProvider.initializeWithToken(authProvider.token!);
-  }
-  
-  await notificationProvider.refresh();
-  
-  if (notificationProvider.error == null) {
-    _showSnackBar('Уведомления обновлены');
-  }
-}
 
   // Открыть уведомления по конкретной подписке
   void _openSubscriptionNotifications(BuildContext context, NotificationGroup group) async {
-  // 🔥 ИСПОЛЬЗУЙТЕ read ВМЕСТО watch
-  final provider = context.read<NotificationProvider>();
+  // ✅ Показываем индикатор загрузки сразу
+  final scaffoldMessenger = ScaffoldMessenger.of(context);
   
-  // Пометить все уведомления подписки как прочитанные
-  final success = await provider.markSubscriptionAsRead(group.subscriptionId);
-  
-  if (success) {
-    Navigator.push(
+  try {
+    final provider = context.read<NotificationProvider>();
+    
+    // 1. Сначала помечаем как прочитанные
+    final success = await provider.markSubscriptionAsRead(group.subscriptionId);
+    
+    if (!success && provider.error != null) {
+      throw Exception(provider.error);
+    }
+    
+    // 2. Переходим на экран чата
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => SubscriptionNotificationsScreen(
@@ -76,8 +86,15 @@ void initState() {
         ),
       ),
     );
-  } else if (provider.error != null) {
-    _showErrorSnackBar(provider.error!);
+    
+  } catch (e) {
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: Text('Ошибка: ${e.toString()}'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 }
 
@@ -194,14 +211,22 @@ void initState() {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ В build методе используем watch
     final authProvider = context.watch<AuthProvider>();
     final notificationProvider = context.watch<NotificationProvider>();
 
-    // Инициализация токена, если он еще не установлен
-    if (!authProvider.isAuthenticated) {
+    // Автоматически инициализируем при изменении авторизации
+    if (authProvider.isAuthenticated && 
+        authProvider.token != null &&
+        notificationProvider.authToken != authProvider.token) {
+      
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // notificationProvider.setAuthToken(authProvider.user!.token);
-        notificationProvider.loadNotificationGroups();
+        // ✅ Внутри коллбэка используем read
+        final notificationProvider = context.read<NotificationProvider>();
+        notificationProvider.setAuthToken(authProvider.token!);
+        if (!notificationProvider.hasLoaded) {
+          notificationProvider.loadNotificationGroups();
+        }
       });
     }
 
@@ -216,7 +241,7 @@ void initState() {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.black),
-            onPressed: notificationProvider.isLoading ? null : _refreshData,
+            onPressed: notificationProvider.isLoading ? null : _refreshData, // ✅ onPressed использует метод с read
           ),
           if (!kIsWeb) IconButton(
             icon: const Icon(Icons.menu, color: Colors.black),
@@ -498,38 +523,60 @@ class SubscriptionNotificationsScreen extends StatefulWidget {
 
 class _SubscriptionNotificationsScreenState extends State<SubscriptionNotificationsScreen> {
   List<Notification> _notifications = [];
-  bool _isLoading = false;
+  bool _isLoading = true; // ✅ Начинаем с true, показываем индикатор сразу
   String? _error;
+  late NotificationProvider _provider;
 
   @override
   void initState() {
     super.initState();
-    _loadNotifications();
+    // ✅ Получаем провайдер БЕЗ подписки (listen: false)
+    _provider = Provider.of<NotificationProvider>(context, listen: false);
+    
+    // НЕ загружаем сразу, загрузим в didChangeDependencies
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // ✅ Загружаем данные только если еще не загружали и не загрузили
+    if (_isLoading && _error == null && _notifications.isEmpty) {
+      _loadNotifications();
+    }
   }
 
   Future<void> _loadNotifications() async {
-    if (_isLoading) return;
-
+    // ✅ Проверяем mounted перед началом любой асинхронной операции
+    if (!mounted) return;
+    
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      final provider = context.watch<NotificationProvider>();
-      final notifications = await provider.loadSubscriptionNotifications(widget.subscriptionId);
+      final notifications = await _provider.loadSubscriptionNotifications(widget.subscriptionId);
+      
+      // ✅ Проверяем mounted перед обновлением состояния
+      if (!mounted) return;
       
       setState(() {
         _notifications = notifications;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
-    } finally {
-      setState(() {
         _isLoading = false;
       });
+      
+      print('[SubscriptionNotificationsScreen] Успешно загружено ${notifications.length} уведомлений');
+    } catch (e) {
+      // ✅ Проверяем mounted перед отображением ошибки
+      if (!mounted) return;
+      
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+      
+      print('[SubscriptionNotificationsScreen] Ошибка загрузки: $e');
     }
   }
 
@@ -543,10 +590,11 @@ class _SubscriptionNotificationsScreenState extends State<SubscriptionNotificati
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(const Duration(days: 1));
+    final messageDate = DateTime(date.year, date.month, date.day);
 
-    if (date.isAfter(today)) {
+    if (messageDate == today) {
       return 'Сегодня';
-    } else if (date.isAfter(yesterday)) {
+    } else if (messageDate == yesterday) {
       return 'Вчера';
     } else {
       return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
@@ -565,7 +613,12 @@ class _SubscriptionNotificationsScreenState extends State<SubscriptionNotificati
       grouped[dateKey]!.add(notification);
     }
     
-    // Упорядочиваем даты: Сегодня, Вчера, затем остальные
+    // Сортируем уведомления внутри каждой группы (новые сверху)
+    for (final key in grouped.keys) {
+      grouped[key]!.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }
+    
+    // Упорядочиваем даты: Сегодня, Вчера, затем остальные (новые сверху)
     final orderedKeys = grouped.keys.toList()
       ..sort((a, b) {
         if (a == 'Сегодня') return -1;
@@ -573,7 +626,7 @@ class _SubscriptionNotificationsScreenState extends State<SubscriptionNotificati
         if (a == 'Вчера') return -1;
         if (b == 'Вчера') return 1;
         
-        // Сравниваем даты для остальных
+        // Для остальных дат сортируем по убыванию (новые выше)
         try {
           final aParts = a.split('.');
           final bParts = b.split('.');
@@ -623,6 +676,7 @@ class _SubscriptionNotificationsScreenState extends State<SubscriptionNotificati
   Widget _buildMessageBubble(Notification notification, BuildContext context) {
     final notificationColor = _getNotificationColor(notification);
     final notificationIcon = _getNotificationIcon(notification);
+    final isPaymentReminder = notification.type == 'payment_reminder';
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -660,10 +714,20 @@ class _SubscriptionNotificationsScreenState extends State<SubscriptionNotificati
                 
                 // Пузырек сообщения
                 Container(
+                  constraints: const BoxConstraints(
+                    minWidth: 50,
+                    maxWidth: 280,
+                  ),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: notification.read ? Colors.white : const Color(0xFFF0F8FF),
-                    borderRadius: BorderRadius.circular(16),
+                    color: isPaymentReminder 
+                      ? const Color(0xFFE8F5E8) // Зеленоватый для платежей
+                      : (notification.read ? Colors.white : const Color(0xFFF0F8FF)),
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.1),
@@ -681,7 +745,7 @@ class _SubscriptionNotificationsScreenState extends State<SubscriptionNotificati
                           color: Colors.black87,
                           fontSize: 14,
                           height: 1.4,
-                          fontWeight: notification.read ? FontWeight.normal : FontWeight.w600,
+                          fontWeight: notification.read ? FontWeight.normal : FontWeight.w500,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -726,7 +790,19 @@ class _SubscriptionNotificationsScreenState extends State<SubscriptionNotificati
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text(
+                    'Загружаем историю...',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            )
           : _error != null
               ? Center(
                   child: Column(
@@ -766,22 +842,27 @@ class _SubscriptionNotificationsScreenState extends State<SubscriptionNotificati
                             color: Colors.grey[400],
                           ),
                           const SizedBox(height: 20),
-                          Text(
+                          const Text(
                             'Нет уведомлений',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w500,
-                              color: Colors.grey[600],
+                              color: Colors.grey,
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Text(
+                          const Text(
                             'По этой подписке пока нет уведомлений',
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.grey[500],
+                              color: Colors.grey,
                             ),
                             textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: _loadNotifications,
+                            child: const Text('Обновить'),
                           ),
                         ],
                       ),
@@ -808,6 +889,7 @@ class _SubscriptionNotificationsScreenState extends State<SubscriptionNotificati
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey[600],
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ),

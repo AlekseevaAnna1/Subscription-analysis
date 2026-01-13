@@ -22,22 +22,34 @@ class NotificationGroup {
 
 
   factory NotificationGroup.fromJson(Map<String, dynamic> json) {
-    final notificationsJson = json['notifications'] as List<dynamic>? ?? [];
-    
-    return NotificationGroup(
-      subscriptionId: json['subscription_id'] as int? ?? 0,
-      subscriptionName: json['subscription_name'] as String? ?? '',
-      subscriptionAmount: (json['subscription_amount'] as num?)?.toDouble() ?? 0.0,
-      subscriptionCategory: json['subscription_category'] as String?,
-      notifications: notificationsJson
-          .map((item) => Notification.fromJson(item as Map<String, dynamic>))
-          .toList(),
-      unreadCount: json['unread_count'] as int? ?? 0,
-      lastNotificationDate: json['last_notification_date'] != null
-          ? DateTime.parse(json['last_notification_date'])
-          : null,
-    );
-  }
+  final notificationsJson = json['notifications'] as List<dynamic>? ?? [];
+  
+  // ✅ Обрабатываем каждое уведомление
+  final notifications = notificationsJson
+      .map((item) {
+        try {
+          return Notification.fromJson(item as Map<String, dynamic>);
+        } catch (e) {
+          print('Ошибка парсинга уведомления: $e, данные: $item');
+          return null;
+        }
+      })
+      .where((item) => item != null)
+      .cast<Notification>()
+      .toList();
+  
+  return NotificationGroup(
+    subscriptionId: json['subscription_id'] as int? ?? 0,
+    subscriptionName: json['subscription_name'] as String? ?? '',
+    subscriptionAmount: (json['subscription_amount'] as num?)?.toDouble() ?? 0.0,
+    subscriptionCategory: json['subscription_category'] as String?,
+    notifications: notifications,
+    unreadCount: json['unread_count'] as int? ?? 0,
+    lastNotificationDate: json['last_notification_date'] != null
+        ? DateTime.parse(json['last_notification_date'])
+        : null,
+  );
+}
 
   Map<String, dynamic> toJson() {
     return {

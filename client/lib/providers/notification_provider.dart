@@ -22,6 +22,16 @@ class NotificationProvider extends ChangeNotifier {
   int get totalUnread => _totalUnread;
   String? get authToken => _authToken;
 
+  // 🔥 ДОБАВЬТЕ ЭТИ ГЕТТЕРЫ:
+  bool get isInitialized => _notificationService != null && _authToken != null;
+  
+  NotificationService _getService() {
+    if (_notificationService == null) {
+      throw Exception('Сервис не инициализирован. Авторизуйтесь.');
+    }
+    return _notificationService!;
+  }
+
   // Общее количество уведомлений
   int get totalNotifications {
     return _notificationGroups.fold(
@@ -49,14 +59,6 @@ class NotificationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Безопасное получение сервиса
-  NotificationService _getService() {
-    if (_notificationService == null) {
-      throw Exception('Сервис не инициализирован. Авторизуйтесь.');
-    }
-    return _notificationService!;
-  }
-
   // 🔥 Инициализация с токеном (обновленный метод)
   void initializeWithToken(String token) {
     _authToken = token;
@@ -71,9 +73,6 @@ class NotificationProvider extends ChangeNotifier {
     _error = error;
     notifyListeners();
   }
-
-  // 🔥 Проверка инициализации
-  bool get isInitialized => _notificationService != null && _authToken != null;
 
   // Загрузка группированных уведомлений
   Future<void> loadNotificationGroups({bool forceRefresh = false}) async {
@@ -112,31 +111,46 @@ class NotificationProvider extends ChangeNotifier {
 
   // Загрузка уведомлений по конкретной подписке (при переходе в "чат")
   Future<List<Notification>> loadSubscriptionNotifications(int subscriptionId) async {
-    // Проверяем инициализацию
-    if (!isInitialized) {
-      throw Exception('Сервис не инициализирован. Авторизуйтесь.');
-    }
-
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
-
-    try {
-      final service = _getService();
-      final notifications = await service.getSubscriptionNotifications(subscriptionId);
-      
-      // Уведомления уже отсортированы от старых к новым (новые снизу) в сервисе
-      _error = null;
-      return notifications;
-    } catch (e) {
-      _error = 'Ошибка загрузки уведомлений по подписке: ${e.toString()}';
-      print('Ошибка загрузки уведомлений по подписке: $e');
-      rethrow;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+  // Проверяем инициализацию
+  if (!isInitialized) {
+    throw Exception('Сервис не инициализирован. Авторизуйтесь.');
   }
+
+  _isLoading = true;
+  _error = null;
+  notifyListeners();
+
+  try {
+    final service = _getService();
+    final notifications = await service.getSubscriptionNotifications(subscriptionId);
+    
+    // ✅ Уведомления уже отсортированы от новых к старым (новые сверху) в сервисе
+    
+    _error = null;
+    return notifications;
+  } catch (e) {
+    // ✅ Более информативное сообщение об ошибке
+    final errorMessage = e.toString();
+    
+    if (errorMessage.contains('Failed to fetch') || 
+        errorMessage.contains('Ошибка сети') ||
+        errorMessage.contains('ClientException')) {
+      _error = 'Ошибка подключения к серверу.\nПроверьте:\n1. Интернет-соединение\n2. Запущен ли бэкенд на localhost:8000\n3. Не блокирует ли брандмауэр';
+    } else if (errorMessage.contains('401')) {
+      _error = 'Требуется авторизация. Пожалуйста, войдите заново.';
+    } else if (errorMessage.contains('404')) {
+      _error = 'Подписка не найдена. Возможно, она была удалена.';
+    } else {
+      _error = 'Ошибка загрузки уведомлений: $errorMessage';
+    }
+    
+    print('Ошибка загрузки уведомлений по подписке: $e');
+    rethrow;
+  } finally {
+    _isLoading = false;
+    notifyListeners();
+  }
+}
 
   // Обновление счетчика непрочитанных
   void _updateUnreadCount() {

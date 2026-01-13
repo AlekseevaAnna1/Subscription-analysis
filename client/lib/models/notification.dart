@@ -2,7 +2,7 @@ import 'dart:convert';
 
 class Notification {
   final String id;
-  final String userId;
+  final String userId; // ✅ Оставляем String
   final int subscriptionId;
   final String type;
   final String title;
@@ -31,7 +31,7 @@ class Notification {
   factory Notification.fromJson(Map<String, dynamic> json) {
     return Notification(
       id: json['id']?.toString() ?? '',
-      userId: json['user_id']?.toString() ?? '',
+      userId: json['user_id']?.toString() ?? '', // ✅ Обрабатываем как строку
       subscriptionId: json['subscription_id'] as int? ?? 0,
       type: json['type'] as String? ?? '',
       title: json['title'] as String? ?? '',
@@ -47,7 +47,7 @@ class Notification {
       createdAt: DateTime.parse(json['created_at']),
     );
   }
-
+  
   // Преобразование в JSON
   Map<String, dynamic> toJson() {
     return {
