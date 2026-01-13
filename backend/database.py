@@ -20,16 +20,13 @@ def init_db():
 
     # Импортируем все модели для создания таблиц
     from backend.models.user import User
-    # Добавьте другие модели если есть:
-    # from backend.models.subscription import Subscription
-    # from backend.models.notification import Notification
+    from backend.models.subscription import Subscription, PriceHistory
+    from backend.models.notification import Notification
 
     Base.metadata.create_all(bind=engine)
     print("✅ Database tables created successfully!")
 
 
-# Автоматически создаем таблицы при импорте модуля
-init_db()
 
 
 # DB Dependency
@@ -39,3 +36,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+# # Автоматически создаем таблицы при импорте модуля
+# init_db()

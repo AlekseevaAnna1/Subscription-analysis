@@ -7,6 +7,9 @@ from backend.routes.auth import router as auth_router
 from backend.routes.subs import router as subs_router
 from backend.routes.notifications import router as notifications_router
 import backend.database
+from backend.database import init_db
+
+init_db()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
