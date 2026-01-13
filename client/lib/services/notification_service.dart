@@ -83,55 +83,61 @@ class NotificationService {
     }
   }
 
-  // ========== GET: Получить все уведомления по конкретной подписке ========== (обязательный)
-  Future<List<Notification>> getSubscriptionNotifications(int subscriptionId) async {
-    try {
-      print('[NotificationService] Запрос уведомлений для подписки $subscriptionId');
-      print('URL: $_baseUrl/notifications/subscription/$subscriptionId');
-      
-      final response = await http.get(
-        Uri.parse('$_baseUrl/notifications/subscription/$subscriptionId'),
-        headers: _headers,
-      );
+  // ========== GET: Получить все уведомления по конкретной подписке ==========
+Future<List<Notification>> getSubscriptionNotifications(int subscriptionId) async {
+  try {
+    print('[NotificationService] Запрос уведомлений для подписки $subscriptionId');
+    print('URL: $_baseUrl/notifications/subscription/$subscriptionId');
+    
+    final response = await http.get(
+      Uri.parse('$_baseUrl/notifications/subscription/$subscriptionId'),
+      headers: _headers,
+    );
 
-      print('[NotificationService] Ответ с сервера:');
-      print('Status Code: ${response.statusCode}');
+    print('[NotificationService] Ответ с сервера:');
+    print('Status Code: ${response.statusCode}');
+    print('Response: ${response.body}'); // ДОБАВЛЕНО: логируем тело ответа
 
-      if (response.statusCode == 200) {
-        try {
-          final List<dynamic> data = json.decode(response.body);
-          print('[NotificationService] Получено ${data.length} уведомлений по подписке $subscriptionId');
-          
-          final notifications = data
-              .map((json) => Notification.fromJson(json as Map<String, dynamic>))
-              .toList();
-          
-          // Сортируем по дате (новые снизу)
-          notifications.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-          
-          return notifications;
-        } catch (e) {
-          print('Response body: ${response.body}');
-          throw Exception('Ошибка обработки данных от сервера: $e');
-        }
-      } else if (response.statusCode == 401) {
-        print('[NotificationService] Ошибка 401: Неавторизован');
-        throw Exception('Неавторизован. Пожалуйста, войдите снова.');
-      } else if (response.statusCode == 404) {
-        print('[NotificationService] Ошибка 404: Подписка не найдена');
-        throw Exception('Подписка не найдена');
-      } else {
-        print('[NotificationService] Ошибка ${response.statusCode}: ${response.body}');
-        throw Exception('Ошибка загрузки уведомлений по подписке: ${response.statusCode}');
+    if (response.statusCode == 200) {
+      try {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        print('[NotificationService] Полная структура ответа: $responseData');
+        
+        // ВАЖНО: Уведомления находятся в поле 'notifications'
+        final List<dynamic> notificationsData = responseData['notifications'] as List<dynamic>? ?? [];
+        print('[NotificationService] Получено ${notificationsData.length} уведомлений по подписке $subscriptionId');
+        
+        final notifications = notificationsData
+            .map((json) => Notification.fromJson(json as Map<String, dynamic>))
+            .toList();
+        
+        // Сортируем по дате (старые снизу, новые сверху)
+        notifications.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        
+        return notifications;
+      } catch (e) {
+        print('[NotificationService] Ошибка обработки данных: $e');
+        print('Response body: ${response.body}');
+        throw Exception('Ошибка обработки данных от сервера: $e');
       }
-    } on http.ClientException catch (e) {
-      print('[NotificationService] Ошибка сети: $e');
-      throw Exception('Ошибка сети. Проверьте подключение к интернету.');
-    } catch (e) {
-      print('[NotificationService] Неожиданная ошибка: $e');
-      rethrow;
+    } else if (response.statusCode == 401) {
+      print('[NotificationService] Ошибка 401: Неавторизован');
+      throw Exception('Неавторизован. Пожалуйста, войдите снова.');
+    } else if (response.statusCode == 404) {
+      print('[NotificationService] Ошибка 404: Подписка не найдена');
+      throw Exception('Подписка не найдена');
+    } else {
+      print('[NotificationService] Ошибка ${response.statusCode}: ${response.body}');
+      throw Exception('Ошибка загрузки уведомлений по подписке: ${response.statusCode}');
     }
+  } on http.ClientException catch (e) {
+    print('[NotificationService] Ошибка сети: $e');
+    throw Exception('Ошибка сети. Проверьте подключение к интернету и запущен ли сервер на localhost:8000');
+  } catch (e) {
+    print('[NotificationService] Неожиданная ошибка: $e');
+    rethrow;
   }
+}
 
   // ========== POST: Пометить все уведомления подписки как прочитанные ==========(обязательный)
   Future<void> markSubscriptionNotificationsAsRead(int subscriptionId) async {
