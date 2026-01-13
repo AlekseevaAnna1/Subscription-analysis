@@ -10,11 +10,11 @@ class NotificationService {
   // Базовый URL API
   String get _baseUrl {
     if (kIsWeb) {
-      return 'http://localhost:8000/api';
+      return 'http://localhost:8000';
     } else if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8000/api';
+      return 'http://10.0.2.2:8000';
     } else {
-      return 'http://localhost:8000/api';
+      return 'http://localhost:8000';
     }
   }
 

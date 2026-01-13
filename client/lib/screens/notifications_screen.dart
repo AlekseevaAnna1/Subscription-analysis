@@ -19,48 +19,67 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String _searchQuery = '';
 
   @override
-  void initState() {
-    super.initState();
-    // Загружаем уведомления при инициализации экрана
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final provider = context.read<NotificationProvider>();
-      if (!provider.hasLoaded) {
-        provider.loadNotificationGroups();
-      }
-    });
+void initState() {
+  super.initState();
+  // Загружаем уведомления при инициализации экрана
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+  final authProvider = context.read<AuthProvider>();
+  final notificationProvider = context.read<NotificationProvider>();
+  
+  if (authProvider.isAuthenticated && authProvider.token != null) {
+    notificationProvider.initializeWithToken(authProvider.token!);
+    notificationProvider.loadNotificationGroups();
+  } else {
+    notificationProvider.setError('Для просмотра уведомлений требуется авторизация');
   }
+});
+}
 
   // Функция для обновления (перезагрузки) данных
   void _refreshData() async {
-    final provider = context.read<NotificationProvider>();
-    await provider.refresh();
-    
-    if (provider.error == null) {
-      _showSnackBar('Уведомления обновлены');
-    }
+  final authProvider = context.read<AuthProvider>();
+  final notificationProvider = context.read<NotificationProvider>();
+  
+  // Проверяем авторизацию перед обновлением
+  if (!authProvider.isAuthenticated || authProvider.token == null) {
+    _showErrorSnackBar('Требуется авторизация');
+    return;
   }
+  
+  // 🔥 ИСПОЛЬЗУЕМ НОВЫЙ МЕТОД - проверяем и инициализируем если нужно
+  if (!notificationProvider.isInitialized) {
+    notificationProvider.initializeWithToken(authProvider.token!);
+  }
+  
+  await notificationProvider.refresh();
+  
+  if (notificationProvider.error == null) {
+    _showSnackBar('Уведомления обновлены');
+  }
+}
 
   // Открыть уведомления по конкретной подписке
   void _openSubscriptionNotifications(BuildContext context, NotificationGroup group) async {
-    final provider = context.read<NotificationProvider>();
-    
-    // Пометить все уведомления подписки как прочитанные
-    final success = await provider.markSubscriptionAsRead(group.subscriptionId);
-    
-    if (success) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => SubscriptionNotificationsScreen(
-            subscriptionId: group.subscriptionId,
-            subscriptionName: group.subscriptionName,
-          ),
+  // 🔥 ИСПОЛЬЗУЙТЕ read ВМЕСТО watch
+  final provider = context.read<NotificationProvider>();
+  
+  // Пометить все уведомления подписки как прочитанные
+  final success = await provider.markSubscriptionAsRead(group.subscriptionId);
+  
+  if (success) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SubscriptionNotificationsScreen(
+          subscriptionId: group.subscriptionId,
+          subscriptionName: group.subscriptionName,
         ),
-      );
-    } else if (provider.error != null) {
-      _showErrorSnackBar(provider.error!);
-    }
+      ),
+    );
+  } else if (provider.error != null) {
+    _showErrorSnackBar(provider.error!);
   }
+}
 
   // Вспомогательные функции для уведомлений
   void _showSnackBar(String message) {
@@ -497,7 +516,7 @@ class _SubscriptionNotificationsScreenState extends State<SubscriptionNotificati
     });
 
     try {
-      final provider = context.read<NotificationProvider>();
+      final provider = context.watch<NotificationProvider>();
       final notifications = await provider.loadSubscriptionNotifications(widget.subscriptionId);
       
       setState(() {

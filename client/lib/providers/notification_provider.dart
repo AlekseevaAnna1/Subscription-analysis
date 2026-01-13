@@ -40,23 +40,60 @@ class NotificationProvider extends ChangeNotifier {
   // Установка токена авторизации
   void setAuthToken(String? token) {
     _authToken = token;
-    _notificationService = NotificationService(authToken: token);
+    if (token != null) {
+      _notificationService = NotificationService(authToken: token);
+    } else {
+      _notificationService = null;
+    }
+    _error = null; // Очищаем ошибку при установке токена
+    notifyListeners();
   }
+
+  // Безопасное получение сервиса
+  NotificationService _getService() {
+    if (_notificationService == null) {
+      throw Exception('Сервис не инициализирован. Авторизуйтесь.');
+    }
+    return _notificationService!;
+  }
+
+  // 🔥 Инициализация с токеном (обновленный метод)
+  void initializeWithToken(String token) {
+    _authToken = token;
+    _notificationService = NotificationService(authToken: token);
+    _error = null;
+    _hasLoaded = false; // Позволяем перезагрузить данные
+    notifyListeners();
+  }
+
+  // 🔥 Ручная установка ошибки
+  void setError(String error) {
+    _error = error;
+    notifyListeners();
+  }
+
+  // 🔥 Проверка инициализации
+  bool get isInitialized => _notificationService != null && _authToken != null;
 
   // Загрузка группированных уведомлений
   Future<void> loadNotificationGroups({bool forceRefresh = false}) async {
     if (_isLoading || (_hasLoaded && !forceRefresh)) return;
+
+    // Проверяем авторизацию перед загрузкой
+    if (!isInitialized) {
+      _error = 'Сервис не инициализирован. Авторизуйтесь.';
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
 
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      if (_notificationService == null) {
-        throw Exception('Сервис не инициализирован. Авторизуйтесь.');
-      }
-
-      final groups = await _notificationService!.getGroupedNotifications();
+      final service = _getService();
+      final groups = await service.getGroupedNotifications();
       _notificationGroups = groups;
       
       // Обновляем счетчик непрочитанных
@@ -75,7 +112,8 @@ class NotificationProvider extends ChangeNotifier {
 
   // Загрузка уведомлений по конкретной подписке (при переходе в "чат")
   Future<List<Notification>> loadSubscriptionNotifications(int subscriptionId) async {
-    if (_notificationService == null) {
+    // Проверяем инициализацию
+    if (!isInitialized) {
       throw Exception('Сервис не инициализирован. Авторизуйтесь.');
     }
 
@@ -84,7 +122,8 @@ class NotificationProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final notifications = await _notificationService!.getSubscriptionNotifications(subscriptionId);
+      final service = _getService();
+      final notifications = await service.getSubscriptionNotifications(subscriptionId);
       
       // Уведомления уже отсортированы от старых к новым (новые снизу) в сервисе
       _error = null;
@@ -109,7 +148,8 @@ class NotificationProvider extends ChangeNotifier {
 
   // Пометить все уведомления подписки как прочитанные (на сервере и локально)
   Future<bool> markSubscriptionAsRead(int subscriptionId) async {
-    if (_notificationService == null) {
+    // Проверяем инициализацию
+    if (!isInitialized) {
       _error = 'Сервис не инициализирован. Авторизуйтесь.';
       notifyListeners();
       return false;
@@ -120,8 +160,10 @@ class NotificationProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final service = _getService();
+      
       // 1. Отправляем запрос на сервер
-      await _notificationService!.markSubscriptionNotificationsAsRead(subscriptionId);
+      await service.markSubscriptionNotificationsAsRead(subscriptionId);
       
       // 2. Обновляем локальное состояние
       final index = _notificationGroups.indexWhere(
@@ -150,20 +192,44 @@ class NotificationProvider extends ChangeNotifier {
     }
   }
 
+  // 🔥 Обновить токен (если истек)
+  Future<bool> refreshToken(String newToken) async {
+    try {
+      setAuthToken(newToken);
+      return true;
+    } catch (e) {
+      _error = 'Ошибка обновления токена: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
   // Получить количество непрочитанных для подписки
   Future<int?> getSubscriptionUnreadCount(int subscriptionId) async {
-    if (_notificationService == null) {
+    if (!isInitialized) {
       return null;
     }
 
     try {
-      final count = await _notificationService!
-          .getSubscriptionUnreadCount(subscriptionId);
+      final service = _getService();
+      final count = await service.getSubscriptionUnreadCount(subscriptionId);
       return count;
     } catch (e) {
       print('Ошибка получения количества непрочитанных: $e');
       return null;
     }
+  }
+
+  // 🔥 Очистка всех данных (при логауте)
+  void clearData() {
+    _notificationGroups = [];
+    _isLoading = false;
+    _error = null;
+    _hasLoaded = false;
+    _totalUnread = 0;
+    _authToken = null;
+    _notificationService = null;
+    notifyListeners();
   }
 
   // Поиск уведомлений
@@ -212,6 +278,12 @@ class NotificationProvider extends ChangeNotifier {
 
   // Принудительное обновление
   Future<void> refresh() async {
+    if (!isInitialized) {
+      _error = 'Сервис не инициализирован. Авторизуйтесь.';
+      notifyListeners();
+      return;
+    }
+
     _hasLoaded = false;
     await loadNotificationGroups(forceRefresh: true);
   }
@@ -247,5 +319,18 @@ class NotificationProvider extends ChangeNotifier {
   // Получить список всех подписок с уведомлениями
   List<int> get subscriptionIdsWithNotifications {
     return _notificationGroups.map((group) => group.subscriptionId).toList();
+  }
+
+  // 🔥 Обновить состояние при изменении авторизации
+  void updateAuthStatus(bool isAuthenticated, String? token) {
+    if (isAuthenticated && token != null) {
+      // Если токен изменился, обновляем
+      if (_authToken != token) {
+        initializeWithToken(token);
+      }
+    } else {
+      // Если разлогинились, очищаем данные
+      clearData();
+    }
   }
 }
