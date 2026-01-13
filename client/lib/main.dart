@@ -5,7 +5,10 @@ import './screens/login_screen.dart';
 import './screens/register_screen.dart';
 import './screens/subscription_screen.dart';
 import './providers/auth_provider.dart';
-import './providers/subscription_provider.dart';
+import './providers/subscription_provider.dart'; 
+import './providers/notification_provider.dart'; 
+import './providers/analytics_provider.dart'; 
+
 
 void main() {
   runApp(MyApp());
@@ -23,6 +26,12 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(  
           create: (_) => SubscriptionProvider(),
+        ),
+         ChangeNotifierProvider(
+          create: (_) => NotificationProvider()
+        ),
+          ChangeNotifierProvider(
+           create: (_) => AnalyticsProvider()
         ),
       ],
       child: Consumer<AuthProvider>(
