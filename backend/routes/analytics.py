@@ -68,7 +68,7 @@ def get_overall_analytics(
     Получить общую аналитику по всем категориям за указанный период.
     
     Логика расчета: 
-    1. Берем активные (неархивированные) подписки пользователя
+    1. Берем ВСЕ подписки пользователя (включая архивные)
     2. Для каждой подписки берем записи из истории цен, где startDate >= начала периода
     3. Суммируем amount по категориям
     """
@@ -87,14 +87,14 @@ def get_overall_analytics(
     
     print(f"📊 Рассчет аналитики за период: {period_start} - {period_end}")
     
-    # Получаем активные подписки пользователя
-    active_subscriptions = db.query(Subscription).filter(
-        Subscription.userId == current_user.id,
-        Subscription.archivedDate.is_(None)  # Только неархивированные
+    # Получаем ВСЕ подписки пользователя (включая архивные)
+    all_subscriptions = db.query(Subscription).filter(
+        Subscription.userId == current_user.id
+        # УБИРАЕМ фильтр по архиву: Subscription.archivedDate.is_(None)
     ).all()
     
-    if not active_subscriptions:
-        # Возвращаем пустой ответ, если нет активных подписок
+    if not all_subscriptions:
+        # Возвращаем пустой ответ, если нет подписок
         period_info = PeriodInfo(
             type=period,
             month=month,
@@ -107,9 +107,9 @@ def get_overall_analytics(
             categories=[]
         )
     
-    subscription_ids = [sub.id for sub in active_subscriptions]
+    subscription_ids = [sub.id for sub in all_subscriptions]
     
-    # Получаем записи истории цен для активных подписок за период
+    # Получаем записи истории цен для всех подписок за период
     # Берем записи, где startDate >= начала периода (не ограничиваем сверху текущей датой)
     price_history_records = db.query(PriceHistory).filter(
         PriceHistory.subscriptionId.in_(subscription_ids),
@@ -118,7 +118,7 @@ def get_overall_analytics(
     
     # Группируем по категориям
     category_totals = {}
-    subscription_category_map = {sub.id: sub.category for sub in active_subscriptions}
+    subscription_category_map = {sub.id: sub.category for sub in all_subscriptions}
     
     for record in price_history_records:
         category = subscription_category_map.get(record.subscriptionId)
@@ -168,7 +168,7 @@ def get_category_analytics(
     
     Возвращает:
     - Общую сумму по категории
-    - Список подписок в этой категории с их вкладом
+    - Список всех подписок в этой категории (включая архивные) с их вкладом
     """
     
     # Валидация параметров
@@ -190,11 +190,11 @@ def get_category_analytics(
     
     print(f"📊 Рассчет аналитики для категории '{category}' за период: {period_start} - {period_end}")
     
-    # Получаем активные подписки пользователя в указанной категории
+    # Получаем ВСЕ подписки пользователя в указанной категории (включая архивные)
     category_subscriptions = db.query(Subscription).filter(
         Subscription.userId == current_user.id,
-        Subscription.category == category,
-        Subscription.archivedDate.is_(None)  # Только неархивированные
+        Subscription.category == category
+        # УБИРАЕМ фильтр по архиву: Subscription.archivedDate.is_(None)
     ).all()
     
     if not category_subscriptions:
@@ -215,7 +215,7 @@ def get_category_analytics(
     subscription_ids = [sub.id for sub in category_subscriptions]
     subscription_map = {sub.id: sub for sub in category_subscriptions}
     
-    # Получаем записи истории цен для подписок в категории за период
+    # Получаем записи истории цен для всех подписок в категории за период
     price_history_records = db.query(PriceHistory).filter(
         PriceHistory.subscriptionId.in_(subscription_ids),
         PriceHistory.startDate >= period_start
@@ -229,8 +229,10 @@ def get_category_analytics(
     # Вычисляем общую сумму по категории
     total_amount = sum(subscription_totals.values())
     
-    # Формируем список подписок с процентами
+    # Формируем список всех подписок с процентами (включая те, у которых нет расходов в этом периоде)
     subscriptions_list = []
+    
+    # Сначала добавляем подписки с расходами
     for sub_id, amount in sorted(subscription_totals.items(), key=lambda x: x[1], reverse=True):
         subscription = subscription_map.get(sub_id)
         if subscription:
@@ -241,6 +243,16 @@ def get_category_analytics(
                 name=subscription.name,
                 total=amount,
                 percentage=round(percentage, 2)
+            ))
+    
+    # Добавляем подписки без расходов в этом периоде (с нулевой суммой)
+    for subscription in category_subscriptions:
+        if subscription.id not in subscription_totals:
+            subscriptions_list.append(SubscriptionAnalytics(
+                id=subscription.id,
+                name=subscription.name,
+                total=0,
+                percentage=0.0
             ))
     
     # Создаем информацию о периоде
