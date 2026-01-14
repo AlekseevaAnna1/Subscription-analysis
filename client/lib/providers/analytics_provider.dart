@@ -7,30 +7,35 @@ import '../utils/category_styles.dart';
 class AnalyticsProvider extends ChangeNotifier {
   // Сервис
   AnalyticsService? _analyticsService;
-  
-  void setAuthToken(String? token) {
-    _analyticsService = AnalyticsService(authToken: token);
-  }
-  
+  String? _authToken;
+
   // Состояние основной аналитики
-  AnalyticsPeriod _currentPeriod = AnalyticsPeriod(type: 'month', month: 9, year: 2024);  // За какой период показывать статистику
-  List<GeneralAnalytics> _generalAnalytics = [];  // Данные по категориям
-  bool _isLoading = false;  // Состояние загрузки основной аналитики
-  String? _error;  // Ошибка загрузки основной аналитики
-  
+  AnalyticsPeriod _currentPeriod = AnalyticsPeriod(
+    type: 'month',
+    month: 9,
+    year: 2024,
+  );
+  List<GeneralAnalytics> _generalAnalytics = [];
+  bool _isLoading = false;
+  String? _error;
+  bool _hasLoaded = false;
+
   // Состояние детальной аналитики
-  List<CategoryAnalytics>? _categoryDetails;  // Детали по выбранной категории
-  String? _selectedCategory;   // Выбранная категория для детализации
-  bool _isLoadingDetails = false;  // Состояние загрузки детализации
-  String? _detailsError;  // Ошибка загрузки детализации
-  
-  // Геттеры для доступа к состоянию из UI
+  List<CategoryAnalytics>? _categoryDetails;
+  String? _selectedCategory;
+  bool _isLoadingDetails = false;
+  String? _detailsError;
+
+  // Геттеры
   AnalyticsPeriod get currentPeriod => _currentPeriod;
   List<GeneralAnalytics> get generalAnalytics => _generalAnalytics;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  double get totalAmount => _generalAnalytics.fold(0, (sum, cat) => sum + cat.total);
-  
+  double get totalAmount =>
+      _generalAnalytics.fold(0, (sum, cat) => sum + cat.total);
+  bool get hasLoaded => _hasLoaded;
+  String? get authToken => _authToken;
+
   // Геттеры для детализации
   List<CategoryAnalytics>? get categoryDetails => _categoryDetails;
   String? get selectedCategory => _selectedCategory;
@@ -41,29 +46,64 @@ class AnalyticsProvider extends ChangeNotifier {
     return _categoryDetails!.fold(0, (sum, cat) => sum + cat.total);
   }
 
-  // Методы изменяют состояние  
-  // Основная загрузка аналитики
-  Future<void> loadGeneralAnalytics() async {
+  // Установка токена авторизации
+  void setAuthToken(String? token) {
+    _authToken = token;
+    if (token != null) {
+      _analyticsService = AnalyticsService(authToken: token);
+    } else {
+      _analyticsService = null;
+    }
+    _error = null;
+    notifyListeners();
+  }
+
+  // Инициализация с токеном
+  void initializeWithToken(String token) {
+    _authToken = token;
+    _analyticsService = AnalyticsService(authToken: token);
+    _error = null;
+    _hasLoaded = false;
+    notifyListeners();
+  }
+
+  // Проверка инициализации
+  bool get isInitialized => _analyticsService != null && _authToken != null;
+
+  // Безопасное получение сервиса
+  AnalyticsService _getService() {
     if (_analyticsService == null) {
+      throw Exception('Сервис не инициализирован. Авторизуйтесь.');
+    }
+    return _analyticsService!;
+  }
+
+  // Загрузка основной аналитики
+  Future<void> loadGeneralAnalytics({bool forceRefresh = false}) async {
+    if (_isLoading || (_hasLoaded && !forceRefresh)) return;
+
+    if (!isInitialized) {
       _error = 'Сервис не инициализирован. Авторизуйтесь.';
       _isLoading = false;
       notifyListeners();
       return;
     }
-    
+
     _isLoading = true;
     _error = null;
     notifyListeners();
-    
+
     try {
-      final data = await _analyticsService!.getAnalyticsSummary(
+      final service = _getService();
+      final data = await service.getAnalyticsSummary(
         period: _currentPeriod.type,
         month: _currentPeriod.month,
         quarter: _currentPeriod.quarter,
         year: _currentPeriod.year,
       );
-      
+
       _generalAnalytics = _mapApiToGeneralAnalytics(data);
+      _hasLoaded = true;
       _error = null;
     } catch (e) {
       _error = 'Ошибка загрузки аналитики: $e';
@@ -73,30 +113,31 @@ class AnalyticsProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   // Загрузка детальной аналитики по категории
   Future<void> loadCategoryAnalytics(String category) async {
-    if (_analyticsService == null) {
+    if (!isInitialized) {
       _detailsError = 'Сервис не инициализирован. Авторизуйтесь.';
       _isLoadingDetails = false;
       notifyListeners();
       return;
     }
-    
+
     _selectedCategory = category;
     _isLoadingDetails = true;
     _detailsError = null;
     notifyListeners();
-    
+
     try {
-      final data = await _analyticsService!.getCategoryAnalytics(
+      final service = _getService();
+      final data = await service.getCategoryAnalytics(
         category: category,
         period: _currentPeriod.type,
         month: _currentPeriod.month,
         quarter: _currentPeriod.quarter,
         year: _currentPeriod.year,
       );
-      
+
       _categoryDetails = _mapApiToCategoryAnalytics(data);
       _detailsError = null;
     } catch (e) {
@@ -107,14 +148,14 @@ class AnalyticsProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
+  void setError(String error) {
+    _error = error;
+    notifyListeners();
+  }
+
   // Обновление периода
-  void updatePeriod({
-    String? type,
-    int? month,
-    int? quarter,
-    int? year,
-  }) {
+  void updatePeriod({String? type, int? month, int? quarter, int? year}) {
     _currentPeriod = AnalyticsPeriod(
       type: type ?? _currentPeriod.type,
       month: month ?? _currentPeriod.month,
@@ -122,47 +163,98 @@ class AnalyticsProvider extends ChangeNotifier {
       year: year ?? _currentPeriod.year,
     );
     notifyListeners();
-    
-    // Перезагружаем данные
+
     loadGeneralAnalytics();
-    
-    // Если есть выбранная категория, перезагружаем и её
+
     if (_selectedCategory != null) {
       loadCategoryAnalytics(_selectedCategory!);
     }
   }
-  
+
   // Быстрые методы переключения
   void setPeriodType(String type) => updatePeriod(type: type);
   void selectMonth(int month) => updatePeriod(month: month, quarter: null);
-  void selectQuarter(int quarter) => updatePeriod(month: null, quarter: quarter);
+  void selectQuarter(int quarter) =>
+      updatePeriod(month: null, quarter: quarter);
   void selectYear(int year) => updatePeriod(year: year);
-  
+
   // Сброс детальной аналитики
   void clearCategoryDetails() {
     _selectedCategory = null;
     _categoryDetails = null;
     notifyListeners();
   }
-  
+
   // Очистка ошибок
   void clearError() {
     _error = null;
     notifyListeners();
   }
-  
+
   void clearDetailsError() {
     _detailsError = null;
     notifyListeners();
   }
-  
+
+  // Обновление токена
+  Future<bool> refreshToken(String newToken) async {
+    try {
+      setAuthToken(newToken);
+      return true;
+    } catch (e) {
+      _error = 'Ошибка обновления токена: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // Очистка данных при логауте
+  void clearData() {
+    _generalAnalytics = [];
+    _categoryDetails = null;
+    _selectedCategory = null;
+    _isLoading = false;
+    _isLoadingDetails = false;
+    _error = null;
+    _detailsError = null;
+    _hasLoaded = false;
+    _authToken = null;
+    _analyticsService = null;
+    notifyListeners();
+  }
+
+  // Принудительное обновление
+  Future<void> refresh() async {
+    if (!isInitialized) {
+      _error = 'Сервис не инициализирован. Авторизуйтесь.';
+      notifyListeners();
+      return;
+    }
+
+    _hasLoaded = false;
+    await loadGeneralAnalytics(forceRefresh: true);
+  }
+
+  // Обновление статуса авторизации
+  void updateAuthStatus(bool isAuthenticated, String? token) {
+    if (isAuthenticated && token != null) {
+      if (_authToken != token) {
+        initializeWithToken(token);
+      }
+    } else {
+      clearData();
+    }
+  }
+
   // Маппинг данных из API
-  List<GeneralAnalytics> _mapApiToGeneralAnalytics(Map<String, dynamic> apiData) {
+  List<GeneralAnalytics> _mapApiToGeneralAnalytics(
+    Map<String, dynamic> apiData,
+  ) {
     if (apiData['categories'] == null) return [];
-    
+
     return (apiData['categories'] as List).map((cat) {
       final apiCategory = cat['category'].toString();
-      
+
       return GeneralAnalytics(
         category: _convertApiCategory(apiCategory),
         total: (cat['total'] as num).toDouble(),
@@ -174,26 +266,25 @@ class AnalyticsProvider extends ChangeNotifier {
   }
 
   List<CategoryAnalytics> _mapApiToCategoryAnalytics(
-  Map<String, dynamic> apiData
+    Map<String, dynamic> apiData,
   ) {
     final List<CategoryAnalytics> result = [];
-    
-    // Извлекаем подписки из API-ответа
     final subscriptions = apiData['subscriptions'] as List<dynamic>;
-    
-    // Преобразуем каждую подписку
+
     for (var sub in subscriptions) {
       final subTotal = (sub['total'] as num).toDouble();
-      
-      result.add(CategoryAnalytics(
-        subscriptionId: sub['id'].toString(),
-        name: sub['name'].toString(),
-        total: subTotal,
-        percentage: (sub['percentage'] as num).toDouble(), 
-        color: _generateColorForSubscription(sub['id'].toString()),
-      ));
+
+      result.add(
+        CategoryAnalytics(
+          subscriptionId: sub['id'].toString(),
+          name: sub['name'].toString(),
+          total: subTotal,
+          percentage: (sub['percentage'] as num).toDouble(),
+          color: _generateColorForSubscription(sub['id'].toString()),
+        ),
+      );
     }
-    
+
     return result;
   }
 
@@ -203,17 +294,23 @@ class AnalyticsProvider extends ChangeNotifier {
     return Color(hash & 0xFFFFFF).withOpacity(1.0);
   }
 
-  
   // Конвертация API категории в SubscriptionCategory
   SubscriptionCategory _convertApiCategory(String apiCategory) {
     switch (apiCategory) {
-      case 'music': return SubscriptionCategory.music;
-      case 'video': return SubscriptionCategory.video;
-      case 'books': return SubscriptionCategory.books;
-      case 'games': return SubscriptionCategory.games;
-      case 'education': return SubscriptionCategory.education;
-      case 'social': return SubscriptionCategory.social;
-      default: return SubscriptionCategory.other;
+      case 'music':
+        return SubscriptionCategory.music;
+      case 'video':
+        return SubscriptionCategory.video;
+      case 'books':
+        return SubscriptionCategory.books;
+      case 'games':
+        return SubscriptionCategory.games;
+      case 'education':
+        return SubscriptionCategory.education;
+      case 'social':
+        return SubscriptionCategory.social;
+      default:
+        return SubscriptionCategory.other;
     }
   }
 }

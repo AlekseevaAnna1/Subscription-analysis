@@ -3,10 +3,10 @@ import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:fl_chart/fl_chart.dart';
 import '../providers/analytics_provider.dart';
+import '../providers/auth_provider.dart';
 import '../models/subscription.dart';
 import '../widgets/app_drawer.dart';
 import 'category_detail_screen.dart';
-
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({Key? key}) : super(key: key);
@@ -23,57 +23,69 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final provider = context.read<AnalyticsProvider>();
-      provider.loadGeneralAnalytics();
+      _initializeAnalytics();
     });
   }
 
+  void _initializeAnalytics() {
+    final authProvider = context.read<AuthProvider>();
+    final analyticsProvider = context.read<AnalyticsProvider>();
+
+    // Проверяем, авторизован ли пользователь и есть ли токен
+    if (authProvider.isAuthenticated && authProvider.token != null) {
+      // Если AnalyticsProvider еще не инициализирован, передаем токен
+      if (!analyticsProvider.isInitialized) {
+        analyticsProvider.initializeWithToken(authProvider.token!);
+      }
+
+      // Загружаем аналитику
+      analyticsProvider.loadGeneralAnalytics();
+    } else if (!authProvider.isInitializing) {
+      // Если не авторизован и AuthProvider уже инициализирован
+      analyticsProvider.setError('Пожалуйста, авторизуйтесь');
+    }
+  }
+
   @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    key: _scaffoldKey,
-    backgroundColor: const Color.fromARGB(248, 223, 218, 245),
-    appBar: AppBar(
-      title: const Text(
-        'Аналитика',
-        style: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor: const Color.fromARGB(248, 223, 218, 245),
+      appBar: AppBar(
+        title: const Text(
+          'Аналитика',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
         ),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+        actions: [
+          if (!kIsWeb)
+            IconButton(
+              icon: const Icon(Icons.menu, color: Colors.black),
+              onPressed: () => _scaffoldKey.currentState!.openEndDrawer(),
+            ),
+        ],
       ),
-      centerTitle: true,
-      backgroundColor: Colors.white,
-      foregroundColor: Colors.black,
-      elevation: 0,
-      actions: [
-        if (!kIsWeb)
-          IconButton(
-            icon: const Icon(Icons.menu, color: Colors.black),
-            onPressed: () => _scaffoldKey.currentState!.openEndDrawer(),
-          ),
-      ],
-    ),
-    
-    endDrawer: kIsWeb ? null : const AppDrawer(
-      currentScreen: AppScreen.analytics,
-      isMobile: true,
-    ),
-    
-    body: kIsWeb 
-      ? Row(
-          children: [
-            const AppDrawer(
-              currentScreen: AppScreen.analytics,
-              isMobile: false,
-            ),
-            Expanded(
-              child: _buildBody(context),
-            ),
-          ],
-        )
-      : _buildBody(context),
-  );
-}
+
+      endDrawer: kIsWeb
+          ? null
+          : const AppDrawer(currentScreen: AppScreen.analytics, isMobile: true),
+
+      body: kIsWeb
+          ? Row(
+              children: [
+                const AppDrawer(
+                  currentScreen: AppScreen.analytics,
+                  isMobile: false,
+                ),
+                Expanded(child: _buildBody(context)),
+              ],
+            )
+          : _buildBody(context),
+    );
+  }
 
   Widget _buildBody(BuildContext context) {
     return Consumer<AnalyticsProvider>(
@@ -91,10 +103,7 @@ Widget build(BuildContext context) {
                 const SizedBox(height: 16),
                 const Text(
                   'Ошибка загрузки аналитики',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 Padding(
@@ -127,15 +136,15 @@ Widget build(BuildContext context) {
                 // Заголовок с общей суммой
                 _buildHeader(provider),
                 const SizedBox(height: kIsWeb ? 32 : 24),
-                
+
                 // Переключатель периода
                 _buildPeriodSelector(provider),
                 const SizedBox(height: kIsWeb ? 40 : 32),
-                
+
                 // Круговая диаграмма по категориям
                 _buildPieChart(provider),
                 const SizedBox(height: kIsWeb ? 40 : 32),
-                
+
                 // Список категорий
                 _buildCategoriesList(context, provider),
               ],
@@ -161,10 +170,7 @@ Widget build(BuildContext context) {
         const SizedBox(height: 8),
         Text(
           _getCurrentPeriodText(provider),
-          style: TextStyle(
-            fontSize: kIsWeb ? 18 : 16,
-            color: Colors.grey[600],
-          ),
+          style: TextStyle(fontSize: kIsWeb ? 18 : 16, color: Colors.grey[600]),
         ),
       ],
     );
@@ -200,7 +206,7 @@ Widget build(BuildContext context) {
                             color: Colors.black.withOpacity(0.05),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
-                          )
+                          ),
                         ]
                       : null,
                 ),
@@ -209,7 +215,9 @@ Widget build(BuildContext context) {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: kIsWeb ? 16 : 14,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.normal,
                     color: isSelected ? Colors.black : Colors.grey[600],
                   ),
                 ),
@@ -229,9 +237,7 @@ Widget build(BuildContext context) {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Center(
-          child: Text('Нет данных для диаграммы'),
-        ),
+        child: const Center(child: Text('Нет данных для диаграммы')),
       );
     }
 
@@ -259,7 +265,8 @@ Widget build(BuildContext context) {
                   _touchedIndex = -1;
                   return;
                 }
-                _touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                _touchedIndex =
+                    pieTouchResponse.touchedSection!.touchedSectionIndex;
               });
             },
           ),
@@ -289,11 +296,12 @@ Widget build(BuildContext context) {
     );
   }
 
-  Widget _buildCategoriesList(BuildContext context, AnalyticsProvider provider) {
+  Widget _buildCategoriesList(
+    BuildContext context,
+    AnalyticsProvider provider,
+  ) {
     if (provider.generalAnalytics.isEmpty) {
-      return const Center(
-        child: Text('Нет категорий для отображения'),
-      );
+      return const Center(child: Text('Нет категорий для отображения'));
     }
 
     return Column(
@@ -374,10 +382,13 @@ Widget build(BuildContext context) {
     );
   }
 
-  void _navigateToCategoryDetail(BuildContext context, SubscriptionCategory category) {
+  void _navigateToCategoryDetail(
+    BuildContext context,
+    SubscriptionCategory category,
+  ) {
     final categoryName = _getCategoryApiName(category);
     final provider = context.read<AnalyticsProvider>();
-    
+
     provider.loadCategoryAnalytics(categoryName).then((_) {
       Navigator.push(
         context,
@@ -393,24 +404,42 @@ Widget build(BuildContext context) {
 
   String _getCategoryApiName(SubscriptionCategory category) {
     switch (category) {
-      case SubscriptionCategory.music: return 'music';
-      case SubscriptionCategory.video: return 'video';
-      case SubscriptionCategory.books: return 'books';
-      case SubscriptionCategory.games: return 'games';
-      case SubscriptionCategory.education: return 'education';
-      case SubscriptionCategory.social: return 'social';
-      case SubscriptionCategory.other: return 'other';
-      default: return 'other';
+      case SubscriptionCategory.music:
+        return 'music';
+      case SubscriptionCategory.video:
+        return 'video';
+      case SubscriptionCategory.books:
+        return 'books';
+      case SubscriptionCategory.games:
+        return 'games';
+      case SubscriptionCategory.education:
+        return 'education';
+      case SubscriptionCategory.social:
+        return 'social';
+      case SubscriptionCategory.other:
+        return 'other';
+      default:
+        return 'other';
     }
   }
 
   String _getCurrentPeriodText(AnalyticsProvider provider) {
     final period = provider.currentPeriod;
-    
+
     if (period.type == 'month' && period.month != null) {
       final months = [
-        'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
-        'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'
+        'январь',
+        'февраль',
+        'март',
+        'апрель',
+        'май',
+        'июнь',
+        'июль',
+        'август',
+        'сентябрь',
+        'октябрь',
+        'ноябрь',
+        'декабрь',
       ];
       return months[period.month! - 1];
     } else if (period.type == 'quarter' && period.quarter != null) {
@@ -422,14 +451,22 @@ Widget build(BuildContext context) {
 
   String _getCategoryDisplayName(SubscriptionCategory category) {
     switch (category) {
-      case SubscriptionCategory.music: return 'Музыка';
-      case SubscriptionCategory.video: return 'Кино';
-      case SubscriptionCategory.books: return 'Книги';
-      case SubscriptionCategory.games: return 'Игры';
-      case SubscriptionCategory.education: return 'Обучение';
-      case SubscriptionCategory.social: return 'Соцсети';
-      case SubscriptionCategory.other: return 'Прочее';
-      default: return 'Неизвестно';
+      case SubscriptionCategory.music:
+        return 'Музыка';
+      case SubscriptionCategory.video:
+        return 'Кино';
+      case SubscriptionCategory.books:
+        return 'Книги';
+      case SubscriptionCategory.games:
+        return 'Игры';
+      case SubscriptionCategory.education:
+        return 'Обучение';
+      case SubscriptionCategory.social:
+        return 'Соцсети';
+      case SubscriptionCategory.other:
+        return 'Прочее';
+      default:
+        return 'Неизвестно';
     }
   }
 }

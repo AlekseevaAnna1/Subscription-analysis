@@ -5,15 +5,15 @@ import '../services/auth_service.dart';
 
 class AuthProvider with ChangeNotifier {
   late SharedPreferences _prefs;
-  
-  // Приватные поля - ОБЪЯВЛЕНО В НАЧАЛЕ КЛАССА
+
+  // Приватные поля
   bool _isLoading = false;
   String? _error;
   String? _token;
   bool _isAuthenticated = false;
   bool _isInitializing = true;
   String? _userEmail;
-  int? _userId;  // Добавьте эту строку
+  int? _userId;
 
   // ✅ Геттеры
   bool get isLoading => _isLoading;
@@ -22,13 +22,13 @@ class AuthProvider with ChangeNotifier {
   bool get isAuthenticated => _isAuthenticated;
   String? get token => _token;
   String? get userEmail => _userEmail;
-  int? get userId => _userId;  // Добавьте этот геттер
+  int? get userId => _userId;
 
   AuthProvider() {
     _initialize();
   }
 
-  // 🚀 Инициализация при запуске приложения
+  // Инициализация при запуске приложения
   Future<void> _initialize() async {
     print('🔄 Инициализация AuthProvider...');
     _prefs = await SharedPreferences.getInstance();
@@ -43,13 +43,13 @@ class AuthProvider with ChangeNotifier {
     try {
       _token = _prefs.getString('auth_token');
       _userEmail = _prefs.getString('user_email');
-      _userId = _prefs.getInt('user_id');  // Эта строка теперь будет работать
-      
+      _userId = _prefs.getInt('user_id');
+
       print('📦 Загружаю сохраненные данные:');
       print('   Токен: ${_token != null ? "Есть" : "Нет"}');
       print('   Email: $_userEmail');
       print('   User ID: $_userId');
-      
+
       if (_token != null && _token!.isNotEmpty) {
         _isAuthenticated = true;
         print('✅ Пользователь аутентифицирован (из сохраненных данных)');
@@ -67,12 +67,12 @@ class AuthProvider with ChangeNotifier {
       await _prefs.setString('auth_token', token);
       await _prefs.setString('user_email', email);
       await _prefs.setInt('user_id', userId);
-      
+
       _token = token;
       _userEmail = email;
-      _userId = userId;  // Сохраняем userId
+      _userId = userId;
       _isAuthenticated = true;
-      
+
       print('💾 Данные сохранены:');
       print('   Email: $email');
       print('   User ID: $userId');
@@ -88,12 +88,12 @@ class AuthProvider with ChangeNotifier {
       await _prefs.remove('auth_token');
       await _prefs.remove('user_email');
       await _prefs.remove('user_id');
-      
+
       _token = null;
       _userEmail = null;
-      _userId = null;  // Очищаем userId
+      _userId = null;
       _isAuthenticated = false;
-      
+
       print('🗑️ Данные пользователя очищены');
     } catch (e) {
       print('❌ Ошибка очистки данных: $e');
@@ -110,15 +110,14 @@ class AuthProvider with ChangeNotifier {
     try {
       print('📤 Отправляю запрос регистрации...');
       final response = await AuthService().register(email, password);
-      
+
       print('📥 Ответ регистрации: ${response.success}');
-      
+
       if (response.success) {
         print('✅ Регистрация успешна! Выполняю auto-login...');
-        
+
         // Auto-login после регистрации
         await login(email, password);
-        
       } else {
         _error = response.message;
         print('❌ Ошибка регистрации: $_error');
@@ -142,26 +141,25 @@ class AuthProvider with ChangeNotifier {
     try {
       print('📤 Отправляю запрос входа...');
       final response = await AuthService().login(email, password);
-      
+
       print('📥 Ответ входа: ${response.success}');
       print('📊 Данные ответа: ${response.data}');
-      
+
       if (response.success) {
         final data = response.data;
         if (data != null && data['access_token'] != null) {
           final token = data['access_token'];
           final userId = data['user_id'] ?? 0;
-          
+
           // ✅ Сохраняем данные
           await _saveAuthData(token, email, userId);
-          
+
           print('🎉 Вход выполнен успешно!');
           print('   User ID: $userId');
           print('   Token: ${token.substring(0, 30)}...');
-          
+
           // ✅ Явно уведомляем об изменениях
           notifyListeners();
-          
         } else {
           _error = 'Токен не получен';
           print('❌ Ошибка: $_error');
@@ -183,14 +181,12 @@ class AuthProvider with ChangeNotifier {
   // 🚪 Выход из системы
   Future<void> logout() async {
     print('🚪 Выход из системы...');
-    
-    // ✅ ОЧИЩАЕМ ВСЕ ДАННЫЕ ПОЛЬЗОВАТЕЛЯ
+
     await _clearAuthData();
-    
-    // Также очищаем SubscriptionProvider
+
     _error = null;
     notifyListeners();
-    
+
     print('✅ Выход выполнен, все данные очищены');
   }
 }
